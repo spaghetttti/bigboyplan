@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
-import { DM_Mono, Syne } from "next/font/google";
+import { DM_Mono, Syne, Geist } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const syne = Syne({
   variable: "--font-syne",
@@ -28,7 +31,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${syne.variable} ${dmMono.variable} h-full antialiased`}
+      className={cn("h-full", "antialiased", syne.variable, dmMono.variable, "font-sans", geist.variable)}
     >
       <body className="min-h-full flex flex-col font-sans">
         <AppShell>{children}</AppShell>
