@@ -1,6 +1,8 @@
-# Local goals tracker
+# DevTrack (tracker)
 
-Next.js app for daily tasks, manual LeetCode logs, goals, and GitHub contribution sync. Data lives in SQLite (`prisma/dev.db`) on your machine.
+Next.js app aligned with [SPEC.md](./SPEC.md): personal learning & goal tracker. Current codebase still uses local SQLite (Prisma) from the first MVP; later steps migrate to Supabase + auth per the spec.
+
+**Step 1 (scaffold) done:** Tailwind v4, shadcn/ui (base-nova), Syne + DM Mono, DevTrack dark tokens + heatmap scale in `globals.css`, TanStack Query provider, plus deps: `next-auth@beta`, `@supabase/supabase-js`, `@dnd-kit/*`, `react-hook-form`, `recharts`.
 
 ## Setup
 

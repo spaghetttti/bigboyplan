@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import { DM_Mono, Syne, Geist } from "next/font/google";
+import { DM_Mono, Syne } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import { AppProviders } from "@/components/providers/app-providers";
 import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const syne = Syne({
   variable: "--font-syne",
@@ -19,8 +18,8 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Goals tracker",
-  description: "Local prep and goals progress",
+  title: "DevTrack",
+  description: "Track the grind — learning & goal progress",
 };
 
 export default function RootLayout({
@@ -31,10 +30,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={cn("h-full", "antialiased", syne.variable, dmMono.variable, "font-sans", geist.variable)}
+      className={cn("dark h-full", syne.variable, dmMono.variable)}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans">
-        <AppShell>{children}</AppShell>
+      <body className="min-h-full">
+        <AppProviders>
+          <AppShell>{children}</AppShell>
+        </AppProviders>
       </body>
     </html>
   );
