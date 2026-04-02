@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+model Goal {
+  id         String    @id @default(cuid())
+  title      String
+  category   String    @default("OTHER")
+  phase      String?
+  targetDate DateTime?
+  sortOrder  Int       @default(0)
+  createdAt  DateTime  @default(now())
+}
+
+model DailyTask {
+  id          String           @id @default(cuid())
+  title       String
+  sortOrder   Int              @default(0)
+  archived    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  completions TaskCompletion[]
+}
+
+model TaskCompletion {
+  id     String    @id @default(cuid())
+  taskId String
+  date   String
+  task   DailyTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, date])
+  @@index([date])
+}
+
+model LeetcodeLog {
+  id    String  @id @default(cuid())
+  date  String
+  count Int
+  notes String?
+
+  @@unique([date])
+}
+
+model GithubDailyStat {
+  id          String   @id @default(cuid())
+  date        String
+  commitCount Int
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date])
+}
