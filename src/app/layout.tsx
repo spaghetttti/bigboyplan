@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Mono, Syne } from "next/font/google";
 import "./globals.css";
-import { AppShell } from "@/components/AppShell";
 import { AppProviders } from "@/components/providers/app-providers";
 import { cn } from "@/lib/utils";
 
@@ -34,9 +33,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full">
-        <AppProviders>
-          <AppShell>{children}</AppShell>
-        </AppProviders>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

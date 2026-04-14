@@ -21,6 +21,13 @@ Supabase clients live in [`src/lib/supabase/`](src/lib/supabase/) whenever you a
 
 If you change `01-devtrack-local.sql` after the DB already exists, either run the new SQL manually or wipe the volume as above.
 
+**Step 3 (auth) done:** NextAuth.js v5 + GitHub OAuth; profile upsert into Prisma `users` (SPEC §3.1); JWT/session includes `session.user.id`; optional mirror to Supabase `users` when service-role env is set ([`src/lib/auth/sync-user-supabase.ts`](src/lib/auth/sync-user-supabase.ts)). Routes: [`/login`](src/app/login/page.tsx), [`/api/auth/*`](src/app/api/auth/[...nextauth]/route.ts), app shell under [`(app)/`](src/app/(app)/). [`src/middleware.ts`](src/middleware.ts) allows `/login` and `/api/auth/*`; everything else requires a session. `/` redirects to `/dashboard` or `/login`.
+
+1. [Create a GitHub OAuth App](https://github.com/settings/developers): Application callback URL `http://localhost:3000/api/auth/callback/github` (add production URL when you deploy).
+2. Set `AUTH_SECRET` (or `NEXTAUTH_SECRET`) — e.g. `openssl rand -base64 32`.
+3. Set `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET` or `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
+4. `npm run dev` → open `/login` → **Continue with GitHub**.
+
 ### Supabase (when you are ready)
 
 1. Create a project at [supabase.com](https://supabase.com).

@@ -7,6 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// App user (SPEC §3.1) — same shape as Docker `public.users` / Supabase profile row.
+model User {
+  id               String   @id @default(uuid())
+  githubId         String   @unique @map("github_id")
+  githubLogin      String   @map("github_login")
+  email            String?
+  avatarUrl        String?  @map("avatar_url")
+  leetcodeUsername String?  @map("leetcode_username")
+  githubUsername   String?  @map("github_username")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
 model Setting {
   key   String @id
   value String

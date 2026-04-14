@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { signOutAction } from "@/app/actions/auth";
 
 const nav = [
-  { href: "/", label: "Dashboard" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/today", label: "Today" },
   { href: "/goals", label: "Goals" },
   { href: "/settings", label: "Settings" },
@@ -20,7 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               Goals <span className="text-purple">&</span> progress
             </h1>
           </div>
-          <nav className="flex flex-wrap gap-2 font-mono text-[11px] uppercase tracking-wider">
+          <nav className="flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-wider">
             {nav.map((item) => (
               <Link
                 key={item.href}
@@ -30,6 +31,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {item.label}
               </Link>
             ))}
+            <form action={signOutAction}>
+              <button
+                type="submit"
+                className="rounded border border-border2 px-3 py-1.5 text-muted2 transition-colors hover:border-coral hover:text-coral"
+              >
+                Sign out
+              </button>
+            </form>
           </nav>
         </header>
         {children}
