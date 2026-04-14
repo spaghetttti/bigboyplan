@@ -2,6 +2,8 @@ import { addGoalForm, deleteGoal } from "@/app/actions/goals";
 import { prisma } from "@/lib/db";
 import { GOAL_CATEGORIES, tagClassForCategory } from "@/lib/tags";
 
+export const dynamic = "force-dynamic";
+
 export default async function GoalsPage() {
   const goals = await prisma.goal.findMany({ orderBy: { sortOrder: "asc" } });
 

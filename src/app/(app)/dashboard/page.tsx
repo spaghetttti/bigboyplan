@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { auth } from "@/auth";
 import { DashboardChartsLoader } from "@/components/DashboardChartsLoader";
 import { SummaryGrid } from "@/components/SummaryGrid";
 import {
@@ -14,9 +15,18 @@ import {
   weekTaskCompletionCount,
 } from "@/lib/stats";
 import { todayISO } from "@/lib/dates";
+import {
+  ensureSeededPlanForUser,
+  planProgressSummary,
+} from "@/lib/plan/service";
+import { prisma } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const today = todayISO();
+  const session = await auth();
+  const plan = await ensureSeededPlanForUser(session?.user?.id);
   const [
     streak,
     weekTasks,
@@ -25,6 +35,9 @@ export default async function DashboardPage() {
     series,
     lastSync,
     syncErr,
+    progress,
+    phases,
+    constraints,
   ] = await Promise.all([
     computeActivityStreak(today),
     weekTaskCompletionCount(today),
@@ -33,6 +46,14 @@ export default async function DashboardPage() {
     aggregatesForLastDays(30),
     getSetting(SETTING_LAST_GH_SYNC),
     getSetting(SETTING_LAST_GH_ERROR),
+    planProgressSummary(plan.id),
+    prisma.planPhase.findMany({
+      where: { planId: plan.id },
+      orderBy: { sortOrder: "asc" },
+    }),
+    prisma.planConstraint.findFirst({
+      where: { planId: plan.id },
+    }),
   ]);
 
   const syncLabel = lastSync
@@ -60,9 +81,37 @@ export default async function DashboardPage() {
           { label: "Day streak", value: String(streak) },
           { label: "Task check-ins (week)", value: String(weekTasks) },
           { label: "LeetCode (7d)", value: String(leet7) },
-          { label: "GitHub activity (7d)", value: String(gh7) },
+          { label: "Hybrid score", value: `${progress.hybridScore}%` },
         ]}
       />
+
+      <section className="mt-6 rounded-xl border border-border bg-surface p-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+          Plan constraints
+        </p>
+        <p className="mt-2 text-sm text-muted2">
+          {constraints?.minHoursPerWeek ?? 13}-{constraints?.maxHoursPerWeek ?? 18}
+          h/week · {constraints?.hasFullTimeJob ? "Full-time job" : "No full-time job"} ·{" "}
+          {constraints?.eveningsWeekends ? "Evenings + weekends" : "Flexible schedule"}
+        </p>
+      </section>
+
+      <section className="mt-6 rounded-xl border border-border bg-surface p-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+          Month timeline
+        </p>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {phases.map((phase) => (
+            <div key={phase.id} className="rounded border border-border px-3 py-2">
+              <p className="font-mono text-[10px] text-muted">
+                Month {String(phase.monthNumber).padStart(2, "0")}
+              </p>
+              <p className="text-sm text-text">{phase.title}</p>
+              <p className="text-xs text-muted2">{phase.focus}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="mt-6 flex flex-wrap gap-3 text-sm text-muted2">
         <span className="font-mono text-[11px] text-muted">
@@ -74,11 +123,14 @@ export default async function DashboardPage() {
           </span>
         ) : null}
         <Link
-          href="/today"
+          href="/planner"
           className="font-mono text-[11px] text-purple hover:underline"
         >
-          Log today →
+          Open planner →
         </Link>
+        <span className="font-mono text-[11px] text-muted">
+          GitHub activity (7d): {gh7}
+        </span>
       </div>
 
       <DashboardChartsLoader data={series} />

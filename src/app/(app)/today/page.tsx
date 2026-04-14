@@ -1,9 +1,15 @@
 import Link from "next/link";
+import { auth } from "@/auth";
+import { togglePlanTaskCompletion, upsertDailyNote } from "@/app/actions/plan";
 import { addDailyTaskForm, toggleTaskCompletion } from "@/app/actions/tasks";
 import { upsertLeetcodeForm } from "@/app/actions/leetcode";
 import { prisma } from "@/lib/db";
 import { addDaysISO, todayISO } from "@/lib/dates";
 import { tagClassForCategory } from "@/lib/tags";
+import { ensureSeededPlanForUser, generateTasksFromTemplates } from "@/lib/plan/service";
+import { PlanTag } from "@/components/plan/PlanTag";
+
+export const dynamic = "force-dynamic";
 
 function validDateOrToday(s: string | undefined): string {
   if (s && /^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
@@ -20,8 +26,11 @@ export default async function TodayPage({
   const prev = addDaysISO(date, -1);
   const next = addDaysISO(date, 1);
   const today = todayISO();
+  const session = await auth();
+  const plan = await ensureSeededPlanForUser(session?.user?.id);
+  await generateTasksFromTemplates(plan.id, addDaysISO(date, -1), addDaysISO(date, 1));
 
-  const [tasks, completions, leet, goals] = await Promise.all([
+  const [tasks, completions, leet, goals, planTasks, planNote] = await Promise.all([
     prisma.dailyTask.findMany({
       where: { archived: false },
       orderBy: { sortOrder: "asc" },
@@ -29,6 +38,13 @@ export default async function TodayPage({
     prisma.taskCompletion.findMany({ where: { date } }),
     prisma.leetcodeLog.findUnique({ where: { date } }),
     prisma.goal.findMany({ orderBy: { sortOrder: "asc" }, take: 8 }),
+    prisma.planTask.findMany({
+      where: { planId: plan.id, date },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.dailyNote.findUnique({
+      where: { planId_date: { planId: plan.id, date } },
+    }),
   ]);
 
   const done = new Set(completions.map((c) => c.taskId));
@@ -123,6 +139,55 @@ export default async function TodayPage({
             className="rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2 transition-colors hover:border-purple hover:text-purple"
           >
             Add task
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-8 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+          Plan day details
+        </h3>
+        <ul className="mt-3 flex flex-col gap-2">
+          {planTasks.length === 0 ? (
+            <li className="text-sm text-muted2">No seeded plan tasks for this day.</li>
+          ) : (
+            planTasks.map((task) => (
+              <li key={task.id} className="rounded border border-border p-2">
+                <div className="mb-1 flex items-center justify-between">
+                  <PlanTag category={task.category} />
+                  <form action={togglePlanTaskCompletion.bind(null, task.id)}>
+                    <button
+                      type="submit"
+                      className={`h-5 w-5 rounded border-2 ${
+                        task.completed
+                          ? "border-purple bg-purple/30"
+                          : "border-border2"
+                      }`}
+                    />
+                  </form>
+                </div>
+                <p className={task.completed ? "text-sm line-through text-muted" : "text-sm text-text"}>
+                  {task.title}
+                </p>
+              </li>
+            ))
+          )}
+        </ul>
+        <form action={upsertDailyNote} className="mt-4">
+          <input type="hidden" name="planId" value={plan.id} />
+          <input type="hidden" name="date" value={date} />
+          <textarea
+            name="content"
+            rows={3}
+            className="w-full"
+            placeholder="What did you work on today?"
+            defaultValue={planNote?.content ?? ""}
+          />
+          <button
+            type="submit"
+            className="mt-2 rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2 transition-colors hover:border-purple hover:text-purple"
+          >
+            Save day note
           </button>
         </form>
       </section>

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -17,6 +17,7 @@ model User {
   leetcodeUsername String?  @map("leetcode_username")
   githubUsername   String?  @map("github_username")
   createdAt        DateTime @default(now()) @map("created_at")
+  plans            Plan[]
 
   @@map("users")
 }
@@ -71,4 +72,140 @@ model GithubDailyStat {
   updatedAt   DateTime @updatedAt
 
   @@unique([date])
+}
+
+enum PlanCategory {
+  DSA
+  JAVA
+  DESIGN
+  DEVOPS
+  REVIEW
+  MOCK
+}
+
+enum PlanTaskSource {
+  TEMPLATE
+  MANUAL
+}
+
+model Plan {
+  id          String           @id @default(cuid())
+  userId      String?
+  title       String
+  description String?
+  startDate   String
+  endDate     String
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  user        User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  constraints PlanConstraint[]
+  phases      PlanPhase[]
+  milestones  PlanMilestone[]
+  templates   WeeklyTemplate[]
+  tasks       PlanTask[]
+  notes       DailyNote[]
+
+  @@index([userId])
+}
+
+model PlanConstraint {
+  id               String  @id @default(cuid())
+  planId           String
+  minHoursPerWeek  Int?
+  maxHoursPerWeek  Int?
+  hasFullTimeJob   Boolean @default(false)
+  eveningsWeekends Boolean @default(false)
+  note             String?
+  plan             Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+}
+
+model PlanPhase {
+  id          String   @id @default(cuid())
+  planId      String
+  monthNumber Int
+  title       String
+  focus       String
+  weekStart   Int
+  weekEnd     Int
+  sortOrder   Int
+  createdAt   DateTime @default(now())
+  plan        Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  milestones  PlanMilestone[]
+  templates   WeeklyTemplate[]
+  tasks       PlanTask[]
+
+  @@index([planId, sortOrder])
+}
+
+model PlanMilestone {
+  id          String    @id @default(cuid())
+  planId      String
+  phaseId     String?
+  label       String
+  value       String
+  isCompleted Boolean   @default(false)
+  sortOrder   Int       @default(0)
+  plan        Plan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  phase       PlanPhase? @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+
+  @@index([planId, sortOrder])
+  @@index([phaseId])
+}
+
+model WeeklyTemplate {
+  id             String       @id @default(cuid())
+  planId         String
+  phaseId        String?
+  weekday        Int
+  title          String
+  detail         String?
+  category       PlanCategory
+  estimatedHours Float?
+  isActive       Boolean      @default(true)
+  sortOrder      Int          @default(0)
+  plan           Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
+  phase          PlanPhase?   @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  tasks          PlanTask[]
+
+  @@index([planId, weekday, sortOrder])
+  @@index([phaseId])
+}
+
+model PlanTask {
+  id             String         @id @default(cuid())
+  planId         String
+  phaseId        String?
+  templateId     String?
+  date           String
+  title          String
+  detail         String?
+  category       PlanCategory
+  estimatedHours Float?
+  completed      Boolean        @default(false)
+  source         PlanTaskSource @default(MANUAL)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  plan           Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  phase          PlanPhase?     @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  template       WeeklyTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([planId, date])
+  @@index([phaseId])
+  @@index([templateId])
+}
+
+model DailyNote {
+  id        String   @id @default(cuid())
+  planId    String
+  date      String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, date])
+  @@index([planId, date])
 }

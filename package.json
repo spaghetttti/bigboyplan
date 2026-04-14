@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "DATABASE_URL=${DATABASE_URL:-postgresql://devtrack:devtrack@localhost:5432/devtrack?schema=public} sh -c 'prisma generate && next build'",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate",
+    "postinstall": "DATABASE_URL=${DATABASE_URL:-postgresql://devtrack:devtrack@localhost:5432/devtrack?schema=public} prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "docker:up": "docker compose up -d",

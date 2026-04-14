@@ -1,6 +1,6 @@
 # DevTrack (tracker)
 
-Next.js app aligned with [SPEC.md](./SPEC.md): personal learning & goal tracker. Current codebase still uses local SQLite (Prisma) from the first MVP; later steps migrate to Supabase + auth per the spec.
+Next.js app aligned with [SPEC.md](./SPEC.md): personal learning & goal tracker. The app now expects PostgreSQL via `DATABASE_URL` (local Docker or Supabase remote).
 
 **Step 1 (scaffold) done:** Tailwind v4, shadcn/ui (base-nova), Syne + DM Mono, DevTrack dark tokens + heatmap scale in `globals.css`, TanStack Query provider, plus deps: `next-auth@beta`, `@supabase/supabase-js`, `@supabase/ssr`, `@dnd-kit/*`, `react-hook-form`, `recharts`.
 
@@ -16,7 +16,7 @@ Supabase clients live in [`src/lib/supabase/`](src/lib/supabase/) whenever you a
 ### Local Postgres (Docker)
 
 1. From `tracker/`: `docker compose up -d` (first start applies init SQL automatically).
-2. Connection string: `postgresql://devtrack:devtrack@localhost:5432/devtrack`
+2. Connection string: `postgresql://devtrack:devtrack@localhost:5432/devtrack?schema=public`
 3. To reset the DB completely: `docker compose down -v` then `docker compose up -d` (destroys the volume).
 
 If you change `01-devtrack-local.sql` after the DB already exists, either run the new SQL manually or wipe the volume as above.
@@ -28,11 +28,12 @@ If you change `01-devtrack-local.sql` after the DB already exists, either run th
 3. Set `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET` or `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
 4. `npm run dev` → open `/login` → **Continue with GitHub**.
 
-### Supabase (when you are ready)
+### Supabase / Vercel
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. **Project Settings → API:** copy URL + anon + service_role into `.env.local` ([`.env.example`](.env.example)).
-3. **SQL Editor:** run [`supabase/migrations/20260402190000_devtrack_schema.sql`](supabase/migrations/20260402190000_devtrack_schema.sql).
+3. **Project Settings → Database:** copy a Postgres connection string and set `DATABASE_URL` (required for Prisma at build/runtime).
+4. **SQL Editor:** run [`supabase/migrations/20260402190000_devtrack_schema.sql`](supabase/migrations/20260402190000_devtrack_schema.sql).
 
 ## Setup
 
@@ -52,11 +53,11 @@ Open [http://localhost:3000](http://localhost:3000).
 2. For the contribution calendar GraphQL query, the token must identify you: classic token with default `read:user` is enough for public contributions; include **`repo`** if you need private-repository activity reflected in your graph.
 3. Paste the token in **Settings → Save token**, then **Sync GitHub now**.
 
-The token is stored only in your local database. Do not commit `prisma/dev.db`.
+The token is stored in your configured Postgres database.
 
 ## Scripts
 
 - `npm run dev` — development server
 - `npm run build` — production build (runs `prisma generate`)
-- `npm run db:studio` — Prisma Studio for the SQLite file
+- `npm run db:studio` — Prisma Studio for your `DATABASE_URL` database
 - `docker compose up -d` / `docker compose down` — local Postgres ([`docker-compose.yml`](docker-compose.yml))
