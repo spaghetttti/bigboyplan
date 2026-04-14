@@ -136,7 +136,7 @@ export async function generateTasksFromTemplates(
   });
   if (!plan) return { created: 0 };
 
-  const templates = plan.templates.filter((t) => t.isActive);
+  const templates = plan.templates.filter((t: { isActive: boolean }) => t.isActive);
   if (templates.length === 0) return { created: 0 };
 
   const dates = eachISODateInRange(fromDate, toDate);
@@ -145,8 +145,10 @@ export async function generateTasksFromTemplates(
     const [y, m, d] = date.split("-").map(Number);
     const weekday = new Date(y, m - 1, d).getDay();
     const monthNumber = currentPhaseMonthNumber(plan.startDate, date);
-    const phase = plan.phases.find((p) => p.monthNumber === monthNumber) ?? null;
-    const matched = templates.filter((t) => t.weekday === weekday);
+    const phase =
+      plan.phases.find((p: (typeof plan.phases)[number]) => p.monthNumber === monthNumber) ??
+      null;
+    const matched = templates.filter((t: { weekday: number }) => t.weekday === weekday);
 
     for (const template of matched) {
       const existing = await prisma.planTask.findFirst({

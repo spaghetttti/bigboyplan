@@ -8,6 +8,7 @@ import { addDaysISO, todayISO } from "@/lib/dates";
 import { tagClassForCategory } from "@/lib/tags";
 import { ensureSeededPlanForUser, generateTasksFromTemplates } from "@/lib/plan/service";
 import { PlanTag } from "@/components/plan/PlanTag";
+import { extractGoalMentionsFromNote } from "@/lib/plan/note-tags";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,7 @@ export default async function TodayPage({
   ]);
 
   const done = new Set(completions.map((c) => c.taskId));
+  const noteMentions = extractGoalMentionsFromNote(planNote?.content ?? "");
 
   return (
     <main>
@@ -147,28 +149,15 @@ export default async function TodayPage({
         <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
           Plan day details
         </h3>
-        <ul className="mt-3 flex flex-col gap-2">
+        <ul className="mt-3 flex gap-2">
           {planTasks.length === 0 ? (
             <li className="text-sm text-muted2">No seeded plan tasks for this day.</li>
           ) : (
             planTasks.map((task) => (
               <li key={task.id} className="rounded border border-border p-2">
-                <div className="mb-1 flex items-center justify-between">
+                <div className="mb-1 flex-row items-center justify-between">
                   <PlanTag category={task.category} />
-                  <form action={togglePlanTaskCompletion.bind(null, task.id)}>
-                    <button
-                      type="submit"
-                      className={`h-5 w-5 rounded border-2 ${
-                        task.completed
-                          ? "border-purple bg-purple/30"
-                          : "border-border2"
-                      }`}
-                    />
-                  </form>
                 </div>
-                <p className={task.completed ? "text-sm line-through text-muted" : "text-sm text-text"}>
-                  {task.title}
-                </p>
               </li>
             ))
           )}
@@ -176,6 +165,9 @@ export default async function TodayPage({
         <form action={upsertDailyNote} className="mt-4">
           <input type="hidden" name="planId" value={plan.id} />
           <input type="hidden" name="date" value={date} />
+          <p className="mb-1 text-xs text-muted2">
+            Add goal hashtags in note: #dsa #java #design #devops #review
+          </p>
           <textarea
             name="content"
             rows={3}
@@ -190,6 +182,13 @@ export default async function TodayPage({
             Save day note
           </button>
         </form>
+        {noteMentions.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {noteMentions.map((tag) => (
+              <PlanTag key={tag} category={tag} />
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="mt-8 rounded-2xl border border-border bg-surface p-5 sm:p-6">

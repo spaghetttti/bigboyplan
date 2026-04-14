@@ -8,6 +8,7 @@ import {
   generateTasksFromTemplates,
 } from "@/lib/plan/service";
 import { addDaysISO, startOfWeekMondayISO, todayISO } from "@/lib/dates";
+import { SUPPORTED_NOTE_TAGS } from "@/lib/plan/note-tags";
 
 async function currentUserIdOrNull() {
   const session = await auth();
@@ -109,12 +110,17 @@ export async function updatePlanConstraints(formData: FormData) {
 export async function upsertDailyNote(formData: FormData) {
   const planId = String(formData.get("planId") ?? "");
   const date = String(formData.get("date") ?? "");
-  const content = String(formData.get("content") ?? "");
+  const content = String(formData.get("content") ?? "").trim();
   if (!planId || !date) return;
+  // Keep only supported goal hashtags canonicalized to lowercase.
+  const normalized = content.replace(/#[a-zA-Z]+/g, (raw) => {
+    const key = raw.slice(1).toLowerCase();
+    return SUPPORTED_NOTE_TAGS.includes(key) ? `#${key}` : raw;
+  });
   await prisma.dailyNote.upsert({
     where: { planId_date: { planId, date } },
-    create: { planId, date, content },
-    update: { content },
+    create: { planId, date, content: normalized },
+    update: { content: normalized },
   });
   revalidatePath("/calendar");
   revalidatePath("/today");

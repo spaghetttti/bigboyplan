@@ -10,6 +10,7 @@ import {
 } from "@/lib/plan/service";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
+import { extractGoalMentionsFromNote } from "@/lib/plan/note-tags";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export default async function CalendarPage({
     }),
     prisma.dailyNote.findUnique({ where: { planId_date: { planId: plan.id, date } } }),
   ]);
+  const noteMentions = extractGoalMentionsFromNote(note?.content ?? "");
 
   return (
     <main>
@@ -104,6 +106,9 @@ export default async function CalendarPage({
           <label className="block font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
             Daily note
           </label>
+          <p className="mt-1 text-xs text-muted2">
+            Use goal hashtags: #dsa #java #design #devops #review
+          </p>
           <textarea
             name="content"
             defaultValue={note?.content ?? ""}
@@ -118,6 +123,13 @@ export default async function CalendarPage({
             Save note
           </button>
         </form>
+        {noteMentions.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {noteMentions.map((tag) => (
+              <PlanTag key={tag} category={tag} />
+            ))}
+          </div>
+        ) : null}
       </section>
     </main>
   );
