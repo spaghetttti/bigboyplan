@@ -69,6 +69,40 @@ export async function addManualPlanTask(formData: FormData) {
   revalidatePath("/calendar");
 }
 
+export async function updatePlanTask(formData: FormData) {
+  const taskId = String(formData.get("taskId") ?? "");
+  const date = String(formData.get("date") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+  const category = String(formData.get("category") ?? "REVIEW").toUpperCase();
+  const detail = String(formData.get("detail") ?? "").trim();
+  const estimatedHoursValue = String(formData.get("estimatedHours") ?? "").trim();
+  const estimatedHoursRaw = Number(estimatedHoursValue);
+
+  const allowedCategories = ["DSA", "JAVA", "DESIGN", "DEVOPS", "REVIEW", "MOCK"];
+  if (!taskId || !date || !title || !allowedCategories.includes(category)) return;
+
+  await prisma.planTask.update({
+    where: { id: taskId },
+    data: {
+      date,
+      title,
+      detail: detail || null,
+      category: category as never,
+      estimatedHours:
+        estimatedHoursValue === ""
+          ? null
+          : Number.isFinite(estimatedHoursRaw)
+            ? estimatedHoursRaw
+            : null,
+    },
+  });
+
+  revalidatePath("/planner");
+  revalidatePath("/calendar");
+  revalidatePath("/dashboard");
+  revalidatePath("/today");
+}
+
 export async function updatePlanConstraints(formData: FormData) {
   const planId = String(formData.get("planId") ?? "");
   if (!planId) return;
