@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { DashboardChartsLoader } from "@/components/DashboardChartsLoader";
 import { SummaryGrid } from "@/components/SummaryGrid";
+import { MonthConsistencyGrid } from "@/components/MonthConsistencyGrid";
 import {
   SETTING_LAST_GH_ERROR,
   SETTING_LAST_GH_SYNC,
@@ -27,6 +28,10 @@ export default async function DashboardPage() {
   const today = todayISO();
   const session = await auth();
   const plan = await ensureSeededPlanForUser(session?.user?.id);
+  const yearNum = Number(today.slice(0, 4));
+  const monthNum = Number(today.slice(5, 7));
+  const monthPrefix = today.slice(0, 7); // "YYYY-MM"
+
   const [
     streak,
     weekTasks,
@@ -38,6 +43,7 @@ export default async function DashboardPage() {
     progress,
     phases,
     constraints,
+    monthCheckIns,
   ] = await Promise.all([
     computeActivityStreak(today),
     weekTaskCompletionCount(today),
@@ -53,6 +59,10 @@ export default async function DashboardPage() {
     }),
     prisma.planConstraint.findFirst({
       where: { planId: plan.id },
+    }),
+    prisma.dailyCheckIn.findMany({
+      where: { date: { startsWith: monthPrefix } },
+      select: { date: true },
     }),
   ]);
 
@@ -84,6 +94,17 @@ export default async function DashboardPage() {
           { label: "Hybrid score", value: `${progress.hybridScore}%` },
         ]}
       />
+
+      <section className="mt-6 rounded-xl border border-border bg-surface p-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+          Monthly consistency
+        </p>
+        <MonthConsistencyGrid
+          checkIns={monthCheckIns.map((c: { date: string }) => c.date)}
+          year={yearNum}
+          month={monthNum}
+        />
+      </section>
 
       <section className="mt-6 rounded-xl border border-border bg-surface p-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">

@@ -3,12 +3,14 @@ import { auth } from "@/auth";
 import { togglePlanTaskCompletion, upsertDailyNote } from "@/app/actions/plan";
 import { addDailyTaskForm, toggleTaskCompletion } from "@/app/actions/tasks";
 import { upsertLeetcodeForm } from "@/app/actions/leetcode";
+import { checkInToday } from "@/app/actions/checkin";
 import { prisma } from "@/lib/db";
 import { addDaysISO, todayISO } from "@/lib/dates";
 import { tagClassForCategory } from "@/lib/tags";
 import { ensureSeededPlanForUser, generateTasksFromTemplates } from "@/lib/plan/service";
 import { PlanTag } from "@/components/plan/PlanTag";
 import { extractGoalMentionsFromNote } from "@/lib/plan/note-tags";
+import { CheckInButton } from "@/components/CheckInButton";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +33,7 @@ export default async function TodayPage({
   const plan = await ensureSeededPlanForUser(session?.user?.id);
   await generateTasksFromTemplates(plan.id, addDaysISO(date, -1), addDaysISO(date, 1));
 
-  const [tasks, completions, leet, goals, planTasks, planNote] = await Promise.all([
+  const [tasks, completions, leet, goals, planTasks, planNote, checkIn] = await Promise.all([
     prisma.dailyTask.findMany({
       where: { archived: false },
       orderBy: { sortOrder: "asc" },
@@ -46,6 +48,7 @@ export default async function TodayPage({
     prisma.dailyNote.findUnique({
       where: { planId_date: { planId: plan.id, date } },
     }),
+    prisma.dailyCheckIn.findUnique({ where: { date: today } }),
   ]);
 
   const done = new Set(completions.map((c) => c.taskId));
@@ -90,6 +93,10 @@ export default async function TodayPage({
           ) : null}
         </div>
       </div>
+
+      {date === today && (
+        <CheckInButton isCheckedIn={!!checkIn} checkInAction={checkInToday} />
+      )}
 
       <section className="mt-10 rounded-2xl border border-border bg-surface p-5 sm:p-6">
         <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">

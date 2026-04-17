@@ -12,6 +12,12 @@ type PrismaDelegate = {
 
 type PrismaWithModels = PrismaClient & {
   user: PrismaDelegate;
+  setting: PrismaDelegate;
+  goal: PrismaDelegate;
+  dailyTask: PrismaDelegate;
+  taskCompletion: PrismaDelegate;
+  leetcodeLog: PrismaDelegate;
+  githubDailyStat: PrismaDelegate;
   plan: PrismaDelegate;
   planConstraint: PrismaDelegate;
   planPhase: PrismaDelegate;
@@ -19,6 +25,7 @@ type PrismaWithModels = PrismaClient & {
   weeklyTemplate: PrismaDelegate;
   planTask: PrismaDelegate;
   dailyNote: PrismaDelegate;
+  dailyCheckIn: PrismaDelegate;
 };
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaWithModels };
 
