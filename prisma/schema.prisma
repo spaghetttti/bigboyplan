@@ -209,3 +209,11 @@ model DailyNote {
   @@unique([planId, date])
   @@index([planId, date])
 }
+
+model DailyCheckIn {
+  id        String   @id @default(cuid())
+  date      String   @unique
+  checkedAt DateTime @default(now())
+
+  @@index([date])
+}
