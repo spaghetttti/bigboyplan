@@ -41,7 +41,7 @@ export function MonthConsistencyGrid({
       <p className="mb-3 font-mono text-[11px] text-muted2">
         {MONTH_NAMES[month - 1]} {year}
       </p>
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
         {DAY_LABELS.map((label) => (
           <div
             key={label}

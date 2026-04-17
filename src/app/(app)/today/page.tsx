@@ -3,7 +3,6 @@ import { auth } from "@/auth";
 import { togglePlanTaskCompletion, upsertDailyNote } from "@/app/actions/plan";
 import { addDailyTaskForm, toggleTaskCompletion } from "@/app/actions/tasks";
 import { upsertLeetcodeForm } from "@/app/actions/leetcode";
-import { checkInToday } from "@/app/actions/checkin";
 import { prisma } from "@/lib/db";
 import { addDaysISO, todayISO } from "@/lib/dates";
 import { tagClassForCategory } from "@/lib/tags";
@@ -95,7 +94,7 @@ export default async function TodayPage({
       </div>
 
       {date === today && (
-        <CheckInButton isCheckedIn={!!checkIn} checkInAction={checkInToday} />
+        <CheckInButton isCheckedIn={!!checkIn} />
       )}
 
       <section className="mt-10 rounded-2xl border border-border bg-surface p-5 sm:p-6">

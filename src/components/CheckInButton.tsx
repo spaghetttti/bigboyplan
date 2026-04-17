@@ -1,14 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { checkInToday } from "@/app/actions/checkin";
 
-export function CheckInButton({
-  isCheckedIn: initialCheckedIn,
-  checkInAction,
-}: {
-  isCheckedIn: boolean;
-  checkInAction: () => Promise<{ ok: true } | { ok: false; error: string }>;
-}) {
+export function CheckInButton({ isCheckedIn: initialCheckedIn }: { isCheckedIn: boolean }) {
   const [checkedIn, setCheckedIn] = useState(initialCheckedIn);
   const [showPop, setShowPop] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +14,7 @@ export function CheckInButton({
     setError(null);
     setCheckedIn(true);
     startTransition(async () => {
-      const result = await checkInAction();
+      const result = await checkInToday();
       if (!result.ok) {
         setCheckedIn(false);
         setError(result.error);
@@ -32,17 +27,6 @@ export function CheckInButton({
 
   return (
     <div className="relative mt-6 flex items-center gap-3">
-      <style>{`
-        @keyframes checkin-pop {
-          0%   { transform: scale(1);    opacity: 1; }
-          40%  { transform: scale(1.18); opacity: 1; }
-          100% { transform: scale(1);    opacity: 0; }
-        }
-        .checkin-pop-anim {
-          animation: checkin-pop 0.9s ease-out forwards;
-        }
-      `}</style>
-
       <button
         type="button"
         disabled={pending || checkedIn}
@@ -66,7 +50,7 @@ export function CheckInButton({
       )}
 
       {error && (
-        <p className="text-xs text-red-400" role="alert">
+        <p className="text-xs text-coral" role="alert">
           {error}
         </p>
       )}
