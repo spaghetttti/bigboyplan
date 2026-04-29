@@ -26,6 +26,7 @@ type PrismaWithModels = PrismaClient & {
   planTask: PrismaDelegate;
   dailyNote: PrismaDelegate;
   dailyCheckIn: PrismaDelegate;
+  category: PrismaDelegate;
 };
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaWithModels };
 

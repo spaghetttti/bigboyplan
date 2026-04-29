@@ -1,5 +1,5 @@
 # Architecture Notes
-> Last updated: 2026-04-29
+> Last updated: 2026-04-29 (session 2)
 
 ---
 
@@ -23,7 +23,7 @@ Data layer
   └── Prisma 6 → PostgreSQL
         ├── Local dev: Docker Compose (port 5432)
         └── Deploy: any Postgres connection string (DATABASE_URL)
-              planned: Supabase Postgres
+              target: Neon Postgres (plain connection string, no SDK)
 
 External APIs
   ├── GitHub GraphQL API — contribution calendar sync (PAT-authenticated)
@@ -53,7 +53,7 @@ Session is a JWT stored in HTTP-only cookie. `session.user.id` is the Postgres `
 
 ### Tenancy model — single-tenant by design
 
-This is a personal tool for one authenticated user. Only `Plan` and its children are scoped to a `userId`. All other tables — `Goal`, `DailyTask`, `LeetcodeLog`, `GithubDailyStat`, `Setting`, `DailyCheckIn` — are global (no `userId`). Server Actions do not add per-user isolation on these tables. **This is intentional and acceptable for a single-user app.**
+This is a personal tool for one authenticated user. Only `Plan` and its children are scoped to a `userId`. All other tables — `Goal`, `DailyTask`, `LeetcodeLog`, `GithubDailyStat`, `Setting`, `DailyCheckIn`, `Category` — are global (no `userId`). Server Actions do not add per-user isolation on these tables. **This is intentional and acceptable for a single-user app.**
 
 If the app ever becomes multi-user, those tables need `userId` FK columns and query filters added.
 
@@ -102,18 +102,15 @@ Plan (one active plan per user)
 3. For each template × weekday in the date range, a `PlanTask` row is upserted
 4. Planner board / calendar day detail reads `PlanTask` rows filtered to the relevant date(s)
 
-**Category taxonomy:** `DSA | JAVA | DESIGN | DEVOPS | REVIEW | MOCK` — defined as a Prisma `enum PlanCategory`, used on `WeeklyTemplate` and `PlanTask`. `Goal.category` is a plain `String` (default `"OTHER"`) to allow categories beyond the plan taxonomy.
+**Category taxonomy:** stored in the `Category` table (see Data Layer). System defaults: `DSA | JAVA | DESIGN | DEVOPS | REVIEW | MOCK | OTHER`. Users can add custom categories in Settings. `WeeklyTemplate.category`, `PlanTask.category`, and `Goal.category` are all `String` — no Prisma enum. `PlanCategory` enum was removed in migration `20260429210745`.
 
 ---
 
-## Activity Score & Heatmaps
+## Activity Score & Heatmap
 
-There are two separate heatmap implementations with different data sources and purposes:
+One heatmap implementation used on both `/dashboard` and `/calendar`.
 
-### Dashboard heatmap (`/dashboard`) — 365 days
-Uses `aggregatesForHeatmap(365)` from `src/lib/stats.ts`.
-
-Aggregates 5 sources per day:
+Uses `aggregatesForHeatmap(365)` from `src/lib/stats.ts`. Aggregates 5 sources per day:
 - `DailyCheckIn` — did the user explicitly check in? (+3 if yes)
 - `LeetcodeLog.count` — LC problems solved that day
 - `GithubDailyStat.commitCount` — GitHub commits that day
@@ -133,18 +130,7 @@ Level 3 (6-9):  #a78bfa
 Level 4 (10+):  #c4b5fd
 ```
 
-Component: `ActivityHeatmap` (react-calendar-heatmap, client-only via `ActivityHeatmapLoader` dynamic import)
-
-### Calendar heatmap (`/calendar`) — 120 days
-Uses `getHeatmapData(planId, 120)` from `src/lib/plan/service.ts`.
-
-Only aggregates `PlanTask` rows for the given plan:
-```
-score = completedPlanTasksCount (for that day)
-```
-Also tracks `totalTasks` and `estimatedHours` per day.
-
-Component: `CalendarHeatmap` (in `src/components/plan/CalendarHeatmap.tsx`)
+Component: `ActivityHeatmap` (react-calendar-heatmap, client-only via `ActivityHeatmapLoader` dynamic import). `CalendarHeatmap` and `MonthConsistencyGrid` components were deleted.
 
 ---
 
@@ -161,6 +147,7 @@ All mutations are Server Actions in `src/app/actions/`:
 | `auth.ts` | `signOut` action |
 | `checkin.ts` | `checkInToday` — upserts `DailyCheckIn` for today |
 | `leetcode.ts` | `upsertLeetcodeLog`, `upsertLeetcodeForm` |
+| `categories.ts` | `addCategory`, `deleteCategory`, `updateCategoryColor` |
 
 ---
 
@@ -169,15 +156,20 @@ All mutations are Server Actions in `src/app/actions/`:
 ```
 User saves PAT in /settings
   → saveGithubPat() stores in Setting table (key: "github_pat")
-  → runGithubSync() calls syncGithubContributions(userId)
-      → reads PAT from Setting
+  → runGithubSync() calls syncGithubContributions()
+      → reads PAT + github_last_sync from Setting
+      → calculates fetch window:
+          first sync  → last 364 days
+          subsequent  → (days since last sync) + 7-day buffer (capped at 364)
       → POST https://api.github.com/graphql
-         query: contributionsCollection (last 364 days)
-      → upserts GithubDailyStat rows (date as ISO string)
+         query: contributionsCollection(from, to)
+      → upserts GithubDailyStat rows in $transaction (fetched window only)
+         historical rows outside the window are untouched
       → updates Setting: github_last_sync, github_last_error
 ```
 
 The sync is manual-trigger only (button on `/settings`). No automatic background sync.
+**Incremental sync:** after the first full sync, subsequent syncs only fetch recent days, preserving historical data.
 
 **Rate limit:** 5000 req/hour for authenticated GraphQL — not a concern for single-user daily use.
 
@@ -200,11 +192,11 @@ Planned (not built): POST to unofficial `https://leetcode.com/graphql` to pull `
 
 ---
 
-## Supabase Notes
+## Remote Database
 
-Supabase is the planned deploy target for Postgres (connect via `DATABASE_URL` standard connection string — no Supabase SDK in the Prisma data path).
+Target: **Neon Postgres** (free tier, no pause-on-inactivity, plain `DATABASE_URL` — no SDK needed). Connect via standard Postgres connection string; Prisma works identically to local Docker.
 
-`trySyncUserToSupabase()` (called from `upsertUserFromGitHub`) optionally mirrors `User` rows to Supabase `public.users` when `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SUPABASE_URL` are set. Errors are swallowed. This is prep for future Supabase Auth/RLS migration — not active in the current data path.
+`trySyncUserToSupabase()` (called from `upsertUserFromGitHub`) optionally mirrors `User` rows to Supabase `public.users` when `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SUPABASE_URL` are set. Errors are swallowed. This is legacy prep code — Supabase is no longer the planned deploy target.
 
 ---
 

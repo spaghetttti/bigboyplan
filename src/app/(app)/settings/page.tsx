@@ -1,4 +1,5 @@
 import { runGithubSync, saveGithubPatForm } from "@/app/actions/settings";
+import { addCategory, deleteCategory, updateCategoryColor } from "@/app/actions/categories";
 import { auth } from "@/auth";
 import {
   ensureSeededPlanAction,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/settings";
 import { SyncGithubButton } from "@/components/SyncGithubButton";
 import { ensureSeededPlanForUser } from "@/lib/plan/service";
+import { getAllCategories } from "@/lib/categories";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -23,11 +25,12 @@ export default async function SettingsPage() {
   const constraints = await prisma.planConstraint.findFirst({
     where: { planId: plan.id },
   });
-  const [pat, lastSync, syncErr, login] = await Promise.all([
+  const [pat, lastSync, syncErr, login, categories] = await Promise.all([
     getSetting(SETTING_GITHUB_PAT),
     getSetting(SETTING_LAST_GH_SYNC),
     getSetting(SETTING_LAST_GH_ERROR),
     getSetting(SETTING_GH_LOGIN),
+    getAllCategories(),
   ]);
 
   const syncLabel = lastSync
@@ -166,6 +169,68 @@ export default async function SettingsPage() {
             className="rounded border border-border2 px-3 py-1 font-mono text-[11px] uppercase text-muted2 hover:border-teal hover:text-teal"
           >
             Re-run plan bootstrap
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-8 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+          Categories
+        </h3>
+        <p className="mt-2 text-sm text-muted2">
+          System categories cannot be deleted. Custom categories can be added and removed.
+        </p>
+
+        <ul className="mt-4 flex flex-col gap-2">
+          {categories.map((cat) => (
+            <li key={cat.id} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
+              <form action={updateCategoryColor.bind(null, cat.id)} className="flex items-center gap-2 flex-1">
+                <input
+                  type="color"
+                  name="color"
+                  defaultValue={cat.color}
+                  className="h-6 w-6 cursor-pointer rounded border-0 bg-transparent p-0"
+                  title="Pick color"
+                />
+                <span className="font-mono text-[11px] uppercase tracking-wider text-text">{cat.name}</span>
+                {cat.isSystem && (
+                  <span className="font-mono text-[9px] uppercase text-muted">system</span>
+                )}
+                <button
+                  type="submit"
+                  className="ml-auto font-mono text-[10px] uppercase text-muted2 hover:text-purple"
+                >
+                  Save color
+                </button>
+              </form>
+              {!cat.isSystem && (
+                <form action={deleteCategory.bind(null, cat.id)}>
+                  <button
+                    type="submit"
+                    className="font-mono text-[10px] uppercase text-coral hover:underline"
+                  >
+                    Delete
+                  </button>
+                </form>
+              )}
+            </li>
+          ))}
+        </ul>
+
+        <form action={addCategory} className="mt-4 flex flex-wrap gap-2 items-end">
+          <label className="flex flex-col gap-1 text-xs text-muted2">
+            Name
+            <input type="text" name="name" placeholder="e.g. RUST" className="w-32 uppercase" required />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted2">
+            Color
+            <input type="color" name="color" defaultValue="#6b6966" className="h-10 w-10 cursor-pointer rounded border-0 bg-transparent p-0" />
+          </label>
+          <button
+            type="submit"
+            className="rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2 transition-colors hover:border-purple hover:text-purple"
+          >
+            Add category
           </button>
         </form>
       </section>

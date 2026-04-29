@@ -1,5 +1,3 @@
-import type { PlanCategory } from "@prisma/client";
-
 type SeedPhase = {
   monthNumber: number;
   title: string;
@@ -11,7 +9,7 @@ type SeedPhase = {
     weekdays: number[];
     title: string;
     detail: string;
-    category: PlanCategory;
+    category: string;
     estimatedHours: number;
   }>;
 };

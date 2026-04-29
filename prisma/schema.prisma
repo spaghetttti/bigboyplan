@@ -74,13 +74,14 @@ model GithubDailyStat {
   @@unique([date])
 }
 
-enum PlanCategory {
-  DSA
-  JAVA
-  DESIGN
-  DEVOPS
-  REVIEW
-  MOCK
+model Category {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  color     String  @default("#6b6966")
+  sortOrder Int     @default(0)
+  isSystem  Boolean @default(false)
+
+  @@map("categories")
 }
 
 enum PlanTaskSource {
@@ -162,7 +163,7 @@ model WeeklyTemplate {
   weekday        Int
   title          String
   detail         String?
-  category       PlanCategory
+  category       String
   estimatedHours Float?
   isActive       Boolean      @default(true)
   sortOrder      Int          @default(0)
@@ -182,7 +183,7 @@ model PlanTask {
   date           String
   title          String
   detail         String?
-  category       PlanCategory
+  category       String
   estimatedHours Float?
   completed      Boolean        @default(false)
   source         PlanTaskSource @default(MANUAL)

@@ -1,13 +1,13 @@
 import { auth } from "@/auth";
 import { togglePlanTaskCompletion, upsertDailyNote } from "@/app/actions/plan";
-import { CalendarHeatmap } from "@/components/plan/CalendarHeatmap";
+import { ActivityHeatmapLoader } from "@/components/ActivityHeatmapLoader";
 import { PlanTag } from "@/components/plan/PlanTag";
 import { addDaysISO, todayISO } from "@/lib/dates";
 import {
   ensureSeededPlanForUser,
   generateTasksFromTemplates,
-  getHeatmapData,
 } from "@/lib/plan/service";
+import { aggregatesForHeatmap } from "@/lib/stats";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
 import { extractGoalMentionsFromNote } from "@/lib/plan/note-tags";
@@ -32,8 +32,8 @@ export default async function CalendarPage({
   const plan = await ensureSeededPlanForUser(session?.user?.id);
   await generateTasksFromTemplates(plan.id, addDaysISO(todayISO(), -45), addDaysISO(todayISO(), 30));
 
-  const [heatmap, dayTasks, note] = await Promise.all([
-    getHeatmapData(plan.id, 120),
+  const [heatmapData, dayTasks, note] = await Promise.all([
+    aggregatesForHeatmap(365),
     prisma.planTask.findMany({
       where: { planId: plan.id, date },
       orderBy: { createdAt: "asc" },
@@ -55,7 +55,7 @@ export default async function CalendarPage({
       </p>
 
       <div className="mt-6">
-        <CalendarHeatmap data={heatmap} />
+        <ActivityHeatmapLoader data={heatmapData} />
       </div>
 
       <section className="mt-6 rounded-xl border border-border bg-surface p-4">

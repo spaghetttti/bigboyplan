@@ -46,25 +46,36 @@ const CONTRIBUTIONS_QUERY = `
 `;
 
 export async function syncGithubContributions(): Promise<{ ok: true } | { ok: false; error: string }> {
-  const token = await prisma.setting.findUnique({ where: { key: SETTING_GITHUB_PAT } });
+  const [token, lastSyncSetting] = await Promise.all([
+    prisma.setting.findUnique({ where: { key: SETTING_GITHUB_PAT } }),
+    prisma.setting.findUnique({ where: { key: SETTING_LAST_GH_SYNC } }),
+  ]);
+
   if (!token?.value?.trim()) {
     return { ok: false, error: "Add a GitHub personal access token in Settings." };
   }
 
-  const fetchContributionWindow = async (rangeDays: number) => {
+  // On first sync fetch full history; subsequent syncs only fetch since last sync
+  // plus a 7-day buffer so any GitHub recalculations in the recent window still land.
+  const lastSyncDate = lastSyncSetting?.value ? new Date(lastSyncSetting.value) : null;
+  const daysSinceLastSync = lastSyncDate
+    ? Math.ceil((Date.now() - lastSyncDate.getTime()) / 86_400_000)
+    : null;
+  const rangeDays = daysSinceLastSync !== null
+    ? Math.min(daysSinceLastSync + 7, GITHUB_MAX_RANGE_DAYS)
+    : GITHUB_MAX_RANGE_DAYS;
+
+  const fetchContributionWindow = async (days: number) => {
     // GitHub requires from->to window to be <= 1 year.
     const to = new Date();
     to.setUTCHours(23, 59, 59, 999);
     const from = new Date(to);
-    from.setUTCDate(from.getUTCDate() - rangeDays);
+    from.setUTCDate(from.getUTCDate() - days);
     from.setUTCHours(0, 0, 0, 0);
 
     const body = JSON.stringify({
       query: CONTRIBUTIONS_QUERY,
-      variables: {
-        from: from.toISOString(),
-        to: to.toISOString(),
-      },
+      variables: { from: from.toISOString(), to: to.toISOString() },
     });
 
     const res = await fetch(GITHUB_GRAPHQL, {
@@ -82,20 +93,14 @@ export async function syncGithubContributions(): Promise<{ ok: true } | { ok: fa
 
     const json = (await res.json()) as GraphQLResponse;
     if (json.errors?.length) {
-      return {
-        ok: false as const,
-        error: json.errors.map((e) => e.message).join("; "),
-      };
+      return { ok: false as const, error: json.errors.map((e) => e.message).join("; ") };
     }
 
     return { ok: true as const, json };
   };
 
-  let response = await fetchContributionWindow(GITHUB_MAX_RANGE_DAYS);
-  if (
-    !response.ok &&
-    response.error.includes("must not exceed 1 year")
-  ) {
+  let response = await fetchContributionWindow(rangeDays);
+  if (!response.ok && response.error.includes("must not exceed 1 year")) {
     response = await fetchContributionWindow(GITHUB_FALLBACK_RANGE_DAYS);
   }
   if (!response.ok) {
@@ -103,34 +108,33 @@ export async function syncGithubContributions(): Promise<{ ok: true } | { ok: fa
     return { ok: false, error: response.error };
   }
 
-  const json = response.json;
-
+  const { json } = response;
   const weeks = json.data?.viewer?.contributionsCollection?.contributionCalendar?.weeks;
   const login = json.data?.viewer?.login;
+
   if (!weeks?.length) {
     await setSetting(SETTING_LAST_GH_ERROR, "No contribution data returned.");
     return { ok: false, error: "No contribution data returned." };
   }
 
-  const days: ContributionDay[] = [];
-  for (const w of weeks) {
-    for (const d of w.contributionDays ?? []) {
-      days.push(d);
-    }
-  }
+  const days: ContributionDay[] = weeks.flatMap((w) => w.contributionDays ?? []);
 
-  for (const d of days) {
-    const date = d.date.slice(0, 10);
-    await prisma.githubDailyStat.upsert({
-      where: { date },
-      create: { date, commitCount: d.contributionCount },
-      update: { commitCount: d.contributionCount },
-    });
-  }
+  // Upsert only the fetched window — historical rows outside this window are untouched.
+  await prisma.$transaction(
+    days.map((d) =>
+      prisma.githubDailyStat.upsert({
+        where: { date: d.date.slice(0, 10) },
+        create: { date: d.date.slice(0, 10), commitCount: d.contributionCount },
+        update: { commitCount: d.contributionCount },
+      })
+    )
+  );
 
-  await setSetting(SETTING_LAST_GH_SYNC, new Date().toISOString());
-  await setSetting(SETTING_LAST_GH_ERROR, "");
-  if (login) await setSetting(SETTING_GH_LOGIN, login);
+  await Promise.all([
+    setSetting(SETTING_LAST_GH_SYNC, new Date().toISOString()),
+    setSetting(SETTING_LAST_GH_ERROR, ""),
+    ...(login ? [setSetting(SETTING_GH_LOGIN, login)] : []),
+  ]);
 
   return { ok: true };
 }

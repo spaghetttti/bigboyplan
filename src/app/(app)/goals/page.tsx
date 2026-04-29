@@ -1,11 +1,15 @@
 import { addGoalForm, deleteGoal } from "@/app/actions/goals";
 import { prisma } from "@/lib/db";
-import { GOAL_CATEGORIES, tagClassForCategory } from "@/lib/tags";
+import { getAllCategories } from "@/lib/categories";
+import { tagClassForCategory } from "@/lib/tags";
 
 export const dynamic = "force-dynamic";
 
 export default async function GoalsPage() {
-  const goals = await prisma.goal.findMany({ orderBy: { sortOrder: "asc" } });
+  const [goals, categories] = await Promise.all([
+    prisma.goal.findMany({ orderBy: { sortOrder: "asc" } }),
+    getAllCategories(),
+  ]);
 
   return (
     <main>
@@ -14,8 +18,7 @@ export default async function GoalsPage() {
       </p>
       <h2 className="mt-2 text-2xl font-bold tracking-tight text-text">Goals</h2>
       <p className="mt-2 max-w-xl text-sm text-muted2">
-        Tag goals like your static plan (DSA, Java, system design, DevOps). Use the
-        Today page for daily execution.
+        Tag goals by category. Use the Today page for daily execution.
       </p>
 
       <form
@@ -33,9 +36,9 @@ export default async function GoalsPage() {
             className="rounded-lg border border-border2 bg-surface2 px-3 py-2 text-sm text-text"
             defaultValue="DSA"
           >
-            {GOAL_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
+            {categories.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.name}
               </option>
             ))}
           </select>

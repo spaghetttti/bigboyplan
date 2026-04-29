@@ -1,6 +1,6 @@
 # DevTrack — MVP Specification
 > Personal learning & goal tracker for backend/DevSecOps interview prep
-> Version: 1.2 MVP | Last updated: 2026-04-29 (reflects actual built state)
+> Version: 1.3 MVP | Last updated: 2026-04-29 session 2 (reflects actual built state)
 
 ---
 
@@ -11,10 +11,10 @@
 | Framework | Next.js 16.2.2 (App Router, Turbopack) |
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS v4 — single `@import "tailwindcss"` in globals.css, no external CSS packages |
-| Database | PostgreSQL via Prisma ORM (local Docker; target: any Postgres via DATABASE_URL) |
+| Database | PostgreSQL via Prisma ORM (local Docker; deploy target: Neon Postgres) |
 | Auth | NextAuth.js v5 beta — GitHub OAuth provider |
 | Charts | Recharts v3 |
-| Heatmaps | react-calendar-heatmap (dashboard); custom SVG component (calendar) |
+| Heatmaps | react-calendar-heatmap — single `ActivityHeatmap` component used on both `/dashboard` and `/calendar` |
 | Deployment | Vercel (target) |
 | Mobile | Fully responsive |
 | Mutations | Next.js Server Actions (not REST API routes) |
@@ -47,7 +47,7 @@
 /dashboard               → main daily view (streak, summary, 365-day heatmap, charts)
 /planner                 → weekly board view (plan tasks by day + category)
 /today                   → daily checklist (recurring tasks + plan tasks + LC log)
-/calendar                → 120-day plan heatmap + day detail panel + daily note editor
+/calendar                → 365-day activity heatmap + day detail panel + daily note editor
 /goals                   → goal list with category tags
 /settings                → GitHub PAT, sync trigger, plan constraints, plan bootstrap
 ```
@@ -81,17 +81,30 @@ value String
 ```
 Keys in use: `github_pat`, `github_last_sync`, `github_last_error`.
 
-### 3.3 `Goal`
+### 3.3 `Category` — user-managed category list
+```prisma
+id        String  @id @default(cuid())
+name      String  @unique       -- uppercase: "DSA", "JAVA", "RUST", etc.
+color     String  @default("#6b6966")  -- hex, maps to design-system token
+sortOrder Int     @default(0)
+isSystem  Boolean @default(false)  -- true = seeded default, protected from delete
+
+@@map("categories")
+```
+Seeded defaults (isSystem = true): `DSA`, `JAVA`, `DESIGN`, `DEVOPS`, `REVIEW`, `MOCK`, `OTHER`.
+Users can add custom categories and change colors for any category from the Settings page.
+`PlanCategory` Prisma enum was removed — all category fields are now plain `String`.
+
+### 3.4 `Goal`
 ```prisma
 id         String    @id @default(cuid())
 title      String
-category   String    @default("OTHER")   -- plain String, not enum; allows "OTHER"
+category   String    @default("OTHER")   -- references Category.name by value (no FK)
 phase      String?
 targetDate DateTime?
 sortOrder  Int       @default(0)
 createdAt  DateTime  @default(now())
 ```
-Note: `category` uses the same values as `PlanCategory` (`DSA`, `JAVA`, `DESIGN`, `DEVOPS`, `REVIEW`, `MOCK`) plus `"OTHER"`. It is a `String` rather than the enum to allow the extra value.
 
 ### 3.4 `DailyTask` — recurring checklist items (independent of plan)
 ```prisma
@@ -271,11 +284,11 @@ plan      Plan     @relation(...)
 ```
 Hashtags (`#dsa`, `#java`, `#design`, `#devops`, `#review`) are extracted at read time via `extractGoalMentionsFromNote()` and displayed as category pills.
 
-### Enums
+### Enum
 ```prisma
-enum PlanCategory { DSA JAVA DESIGN DEVOPS REVIEW MOCK }
 enum PlanTaskSource { TEMPLATE MANUAL }
 ```
+`PlanCategory` was removed. Categories are now stored in the `Category` table.
 
 ---
 
@@ -299,6 +312,7 @@ enum PlanTaskSource { TEMPLATE MANUAL }
 - **Query:** Contribution calendar for last 364 days
 - **Storage:** Upserts into `GithubDailyStat` per date (ISO string)
 - **Trigger:** Settings page "Sync GitHub now" → `runGithubSync()` Server Action
+- **Incremental sync:** first run fetches full 364 days; subsequent runs fetch only `(days since last sync) + 7` days — historical rows are never overwritten
 - **Status tracking:** `github_last_sync` + `github_last_error` in `Setting` table
 
 ### 5.2 LeetCode Integration ⚠️ Manual only
@@ -352,6 +366,13 @@ All mutations use Next.js Server Actions in `src/app/actions/`:
 | `upsertLeetcodeLog(date, count, notes?)` | Upsert LC count for a date |
 | `upsertLeetcodeForm(formData)` | Form wrapper for upsertLeetcodeLog |
 
+### `categories.ts`
+| Action | Description |
+|---|---|
+| `addCategory(formData)` | Create a new custom category with name + color |
+| `deleteCategory(id, formData)` | Delete a non-system category |
+| `updateCategoryColor(id, formData)` | Change the color of any category |
+
 ### `auth.ts`
 | Action | Description |
 |---|---|
@@ -389,13 +410,13 @@ All mutations use Next.js Server Actions in `src/app/actions/`:
 - Today's plan tasks from `PlanTask`
 - LeetCode log form (count + notes, upsert for date)
 
-### 7.4 `/calendar` — Plan Heatmap + Daily Note
-- 120-day plan-task heatmap (plan tasks only, not the full activity score)
-- Click day / use date picker → day detail: plan tasks for that date with completion toggles
+### 7.4 `/calendar` — Activity Heatmap + Daily Note
+- 365-day activity heatmap (same component and data source as `/dashboard`)
+- Date picker → day detail: plan tasks for that date with completion toggles
 - Daily note editor (textarea, save via Server Action)
 - Extracted hashtag category pills shown after note
 
-**Components:** `CalendarHeatmap` (in `src/components/plan/`)
+**Components:** `ActivityHeatmapLoader` → `ActivityHeatmap`
 
 ### 7.5 `/goals` — Goal List
 - Goals listed with category badge
@@ -409,6 +430,7 @@ All mutations use Next.js Server Actions in `src/app/actions/`:
 - Last synced timestamp + error display
 - Plan constraints form
 - "Bootstrap plan from seed" button
+- Categories section: list all categories with color picker, add custom categories, delete non-system categories
 
 ### 7.7 `/login`
 - Centered card, dark background
@@ -526,27 +548,26 @@ tracker/
 │   │   ├── ui/
 │   │   │   └── button.tsx              ← base Button component
 │   │   ├── plan/
-│   │   │   ├── CalendarHeatmap.tsx     ← plan-tasks-only heatmap (/calendar)
 │   │   │   ├── PlanTag.tsx             ← category badge
 │   │   │   └── WeeklyPlannerBoard.tsx
 │   │   ├── providers/
 │   │   │   └── app-providers.tsx       ← TanStack QueryClientProvider
-│   │   ├── ActivityHeatmap.tsx         ← full activity heatmap (/dashboard)
+│   │   ├── ActivityHeatmap.tsx         ← full activity heatmap (/dashboard + /calendar)
 │   │   ├── ActivityHeatmapLoader.tsx   ← dynamic import wrapper (ssr: false)
 │   │   ├── AppShell.tsx                ← nav sidebar + layout shell
 │   │   ├── CheckInButton.tsx           ← campfire check-in button + modal
 │   │   ├── DashboardCharts.tsx
 │   │   ├── DashboardChartsLoader.tsx
-│   │   ├── MonthConsistencyGrid.tsx    ← UNUSED (replaced by ActivityHeatmap)
 │   │   ├── SummaryGrid.tsx
 │   │   └── SyncGithubButton.tsx
 │   ├── lib/
-│   │   ├── db.ts                       ← Prisma singleton
-│   │   ├── github.ts                   ← GitHub GraphQL sync
+│   │   ├── db.ts                       ← Prisma singleton (includes manual model type list)
+│   │   ├── github.ts                   ← GitHub GraphQL sync (incremental)
 │   │   ├── stats.ts                    ← aggregation queries (streak, heatmap, charts)
 │   │   ├── settings.ts                 ← key-value Setting helpers
+│   │   ├── categories.ts               ← getAllCategories(), colorClassForCategory()
 │   │   ├── dates.ts                    ← ISO date utilities
-│   │   ├── tags.ts                     ← category → CSS class map
+│   │   ├── tags.ts                     ← category name → Tailwind class (fallback for known names)
 │   │   ├── utils.ts                    ← cn()
 │   │   ├── chart.ts                    ← chart tick formatters
 │   │   ├── types.ts                    ← DayAggregate, MetricType
@@ -609,6 +630,9 @@ SUPABASE_SERVICE_ROLE_KEY=
 - GitHub activity sync (GraphQL contribution calendar)
 - Plan model: 4 phases, weekly templates, task instances, milestones
 - DailyCheckIn model + campfire check-in animation
+- Dynamic categories — `Category` table, user-managed from Settings, color picker per category
+- Incremental GitHub sync — only fetches new days after first full sync
+- Unified activity heatmap on both `/dashboard` and `/calendar` (react-calendar-heatmap)
 - Mobile responsive
 
 ### Not Yet Built ❌
@@ -631,7 +655,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 
 ## 14. Remaining Build Order
 
-1. **Remote database** — provision Supabase (or Neon/Railway) Postgres, run migrations, set `DATABASE_URL` in Vercel. Unblocks production deploy.
+1. **Remote database** — provision Neon Postgres, run migrations, set `DATABASE_URL` in Vercel. Unblocks production deploy.
 2. **Goal metrics** — Add `targetValue`, `currentValue`, `deadline` to `Goal`; wire up progress bars on `/goals`
 3. **Stats page** — Move/expand charts to `/stats`; add LeetCode difficulty breakdown, GitHub weekly bars
 4. **LeetCode API** — Attempt unofficial GraphQL scrape on `/api/sync/leetcode`; fall back to manual
