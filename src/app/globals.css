@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -256,6 +254,9 @@ h3,
 .campfire-card-out     { animation: campfire-card-out     420ms ease-in  forwards; }
 
 /* Activity heatmap — DevTrack purple color scheme (override GitHub defaults) */
+.react-calendar-heatmap text {
+  fill: #c0bdb5 !important;
+}
 .react-calendar-heatmap .color-empty {
   fill: #1a1a1e !important;
 }
@@ -277,7 +278,7 @@ h3,
   stroke-width: 1px !important;
 }
 .react-calendar-heatmap .react-calendar-heatmap-small-text {
-  color: var(--muted2);
+  fill: #9b9893 !important;
   font-size: 11px;
 }
 

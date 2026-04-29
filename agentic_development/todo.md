@@ -2,6 +2,32 @@
 
 ## Priority 1 — Usability / correctness
 
+- [] Quick survey done. Here's what I found, then let's pick an order — this is too much to do in one shot.
+
+Major drift between docs and code:
+
+Area	Docs claim	Reality
+Heatmap	/calendar 120-day	/dashboard 365-day (just built); /calendar still has its own
+Activity score	github + lc×3 + tasks×1	(checkedIn?3:0) + leetcode + github + dailyTasks + planTasks (stats.ts)
+Goal.category	PlanCategory enum	plain String with default "OTHER"
+Schema dates	DateTime in SPEC	most are String (LeetcodeLog, GithubDailyStat, TaskCompletion, PlanTask, DailyNote, DailyCheckIn) — significant undocumented decision
+Multi-tenancy	"queries scoped to session.user.id" (arch §47)	only Plan has userId; Goal, DailyTask, LeetcodeLog, GithubDailyStat, Setting, DailyCheckIn are global (single-tenant)
+DailyCheckIn model	not mentioned	exists, drives campfire check-in
+Server actions	5 files listed	also leetcode.ts, checkin.ts
+Component dirs	nested by feature	mostly flat at src/components/
+Styling	"no shadcn" (SPEC §0)	shadcn CLI + tw-animate-css were imported in globals.css until just now
+Bug: Vercel crash after "Continue with GitHub" is a separate, urgent issue. Most likely cause: missing env vars (AUTH_SECRET, AUTH_GITHUB_ID/SECRET, DATABASE_URL) or callback URL mismatch on the GitHub OAuth app, not a code bug — but I need to see Vercel logs to confirm.
+
+Recommended order (each tackled in its own pass):
+
+Vercel crash first — it's blocking actual use; cheap to diagnose if you can paste the error from Vercel logs and confirm which env vars are set.
+Schema audit & realign — decide String vs DateTime dates, decide single-tenant vs multi-tenant (right now you can't deploy this for anyone but yourself), confirm Goal.category should be enum or stay string. This is the highest-impact item — it shapes the docs.
+Rewrite SPEC.md & architecture.md — only after #2, so we're documenting the intended state, not yesterday's state.
+Cleanup pass — delete MonthConsistencyGrid (replaced by ActivityHeatmap), unify the two heatmap implementations (/dashboard vs /calendar), drop tw-animate-css/shadcn deps if unused.
+Which do you want to start with? My suggestion: #1 (the crash) right now while it's painful, then #2 (schema decisions) — those decisions drive what we write in the docs anyway.
+
+
+
 - [x] Fix text clipping (descenders like `g`, `y`) across planner/calendar/settings controls.
 - [x] Render planner columns Monday-first instead of Sunday-first.
 - [x] Add edit mode for existing planner tasks (title/detail/category/hours/date).
@@ -50,6 +76,11 @@
   - log save
   - daily note save
 - [ ] Keep error messaging distinct from success messaging.
+
+
+## Priority 4.5 - Persistant Github activiy , sync -> save in db -> so next syncs only append new activity instead of overriding all off the already synced data 
+
+## Priority 5 - Collapsible view for weekly calendar for each day and it's tasks preview just as type of tasks in stead of full on tasks with description
 
 ## Suggested implementation order
 
