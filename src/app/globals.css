@@ -233,11 +233,51 @@ h3,
   line-height: 1.35;
 }
 
-@keyframes checkin-pop {
-  0%   { transform: scale(1);    opacity: 1; }
-  40%  { transform: scale(1.22); opacity: 1; }
-  100% { transform: scale(1);    opacity: 0; }
+/* Campfire check-in modal — keyframe-based fade so both directions are smooth */
+@keyframes campfire-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
-.checkin-pop-anim {
-  animation: checkin-pop 0.9s ease-out forwards;
+@keyframes campfire-backdrop-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
+@keyframes campfire-card-in {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes campfire-card-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.92); }
+}
+.campfire-backdrop-in  { animation: campfire-backdrop-in  420ms ease-out forwards; }
+.campfire-backdrop-out { animation: campfire-backdrop-out 420ms ease-in  forwards; }
+.campfire-card-in      { animation: campfire-card-in      420ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+.campfire-card-out     { animation: campfire-card-out     420ms ease-in  forwards; }
+
+/* Activity heatmap — DevTrack purple color scheme (override GitHub defaults) */
+.react-calendar-heatmap .color-empty {
+  fill: #1a1a1e !important;
+}
+.react-calendar-heatmap .color-github-1 {
+  fill: #3b2f6e !important;
+}
+.react-calendar-heatmap .color-github-2 {
+  fill: #6d4fc2 !important;
+}
+.react-calendar-heatmap .color-github-3 {
+  fill: #a78bfa !important;
+}
+.react-calendar-heatmap .color-github-4 {
+  fill: #c4b5fd !important;
+}
+.react-calendar-heatmap rect {
+  rx: 2px !important;
+  stroke: rgba(255, 255, 255, 0.07) !important;
+  stroke-width: 1px !important;
+}
+.react-calendar-heatmap .react-calendar-heatmap-small-text {
+  color: var(--muted2);
+  font-size: 11px;
+}
+

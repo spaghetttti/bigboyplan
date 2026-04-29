@@ -2,7 +2,8 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { DashboardChartsLoader } from "@/components/DashboardChartsLoader";
 import { SummaryGrid } from "@/components/SummaryGrid";
-import { MonthConsistencyGrid } from "@/components/MonthConsistencyGrid";
+import { ActivityHeatmapLoader } from "@/components/ActivityHeatmapLoader";
+import { CheckInButton } from "@/components/CheckInButton";
 import {
   SETTING_LAST_GH_ERROR,
   SETTING_LAST_GH_SYNC,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/settings";
 import {
   aggregatesForLastDays,
+  aggregatesForHeatmap,
   computeActivityStreak,
   sumGithubLastDays,
   sumLeetcodeLastDays,
@@ -28,8 +30,6 @@ export default async function DashboardPage() {
   const today = todayISO();
   const session = await auth();
   const plan = await ensureSeededPlanForUser(session?.user?.id);
-  const yearNum = Number(today.slice(0, 4));
-  const monthNum = Number(today.slice(5, 7));
   const monthPrefix = today.slice(0, 7); // "YYYY-MM"
 
   const [
@@ -44,6 +44,8 @@ export default async function DashboardPage() {
     phases,
     constraints,
     monthCheckIns,
+    todayCheckIn,
+    heatmapData,
   ] = await Promise.all([
     computeActivityStreak(today),
     weekTaskCompletionCount(today),
@@ -64,6 +66,8 @@ export default async function DashboardPage() {
       where: { date: { startsWith: monthPrefix } },
       select: { date: true },
     }),
+    prisma.dailyCheckIn.findUnique({ where: { date: today } }),
+    aggregatesForHeatmap(365),
   ]);
 
   const syncLabel = lastSync
@@ -81,10 +85,15 @@ export default async function DashboardPage() {
       <h2 className="mt-2 text-2xl font-bold tracking-tight text-text">
         Dashboard
       </h2>
-      <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted2">
-        Streaks and weekly totals combine daily tasks, LeetCode logs, and GitHub
-        activity (after you sync in Settings).
-      </p>
+      <div className="flex gap-2 justify-between">
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted2">
+          Streaks and weekly totals combine daily tasks, LeetCode logs, and
+          GitHub activity (after you sync in Settings).
+        </p>
+        <div className="py-12">
+          <CheckInButton isCheckedIn={!!todayCheckIn} />
+        </div>
+      </div>
 
       <SummaryGrid
         items={[
@@ -95,15 +104,18 @@ export default async function DashboardPage() {
         ]}
       />
 
+      <CheckInButton isCheckedIn={!!todayCheckIn} />
+
       <section className="mt-6 rounded-xl border border-border bg-surface p-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-          Monthly consistency
+          Activity (last 365 days)
         </p>
-        <MonthConsistencyGrid
-          checkIns={monthCheckIns.map((c: { date: string }) => c.date)}
-          year={yearNum}
-          month={monthNum}
-        />
+        <div className="mt-3 overflow-x-auto">
+          <ActivityHeatmapLoader data={heatmapData} />
+        </div>
+        <p className="mt-3 font-mono text-[10px] text-muted2">
+          {monthCheckIns.length} day{monthCheckIns.length !== 1 ? "s" : ""} checked in this month
+        </p>
       </section>
 
       <section className="mt-6 rounded-xl border border-border bg-surface p-4">
@@ -111,9 +123,15 @@ export default async function DashboardPage() {
           Plan constraints
         </p>
         <p className="mt-2 text-sm text-muted2">
-          {constraints?.minHoursPerWeek ?? 13}-{constraints?.maxHoursPerWeek ?? 18}
-          h/week · {constraints?.hasFullTimeJob ? "Full-time job" : "No full-time job"} ·{" "}
-          {constraints?.eveningsWeekends ? "Evenings + weekends" : "Flexible schedule"}
+          {constraints?.minHoursPerWeek ?? 13}-
+          {constraints?.maxHoursPerWeek ?? 18}
+          h/week ·{" "}
+          {constraints?.hasFullTimeJob
+            ? "Full-time job"
+            : "No full-time job"} ·{" "}
+          {constraints?.eveningsWeekends
+            ? "Evenings + weekends"
+            : "Flexible schedule"}
         </p>
       </section>
 
@@ -123,7 +141,10 @@ export default async function DashboardPage() {
         </p>
         <div className="mt-3 grid gap-2 md:grid-cols-2">
           {phases.map((phase) => (
-            <div key={phase.id} className="rounded border border-border px-3 py-2">
+            <div
+              key={phase.id}
+              className="rounded border border-border px-3 py-2"
+            >
               <p className="font-mono text-[10px] text-muted">
                 Month {String(phase.monthNumber).padStart(2, "0")}
               </p>
