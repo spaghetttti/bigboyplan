@@ -1,6 +1,6 @@
 # DevTrack — MVP Specification
 > Personal learning & goal tracker for backend/DevSecOps interview prep
-> Version: 1.3 MVP | Last updated: 2026-04-29 session 2 (reflects actual built state)
+> Version: 1.4 MVP | Last updated: 2026-04-30 session 3 (reflects actual built state)
 
 ---
 
@@ -11,7 +11,7 @@
 | Framework | Next.js 16.2.2 (App Router, Turbopack) |
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS v4 — single `@import "tailwindcss"` in globals.css, no external CSS packages |
-| Database | PostgreSQL via Prisma ORM (local Docker; deploy target: Neon Postgres) |
+| Database | PostgreSQL via Prisma ORM (local Docker dev; Neon Postgres in production ✅) |
 | Auth | NextAuth.js v5 beta — GitHub OAuth provider |
 | Charts | Recharts v3 |
 | Heatmaps | react-calendar-heatmap — single `ActivityHeatmap` component used on both `/dashboard` and `/calendar` |
@@ -106,7 +106,7 @@ sortOrder  Int       @default(0)
 createdAt  DateTime  @default(now())
 ```
 
-### 3.4 `DailyTask` — recurring checklist items (independent of plan)
+### 3.5 `DailyTask` — recurring checklist items (independent of plan)
 ```prisma
 id          String           @id @default(cuid())
 title       String
@@ -116,7 +116,7 @@ createdAt   DateTime         @default(now())
 completions TaskCompletion[]
 ```
 
-### 3.5 `TaskCompletion`
+### 3.6 `TaskCompletion`
 ```prisma
 id     String    @id @default(cuid())
 taskId String
@@ -127,7 +127,7 @@ task   DailyTask @relation(...)
 @@index([date])
 ```
 
-### 3.6 `LeetcodeLog`
+### 3.7 `LeetcodeLog`
 ```prisma
 id    String  @id @default(cuid())
 date  String  @unique   -- "YYYY-MM-DD"
@@ -135,7 +135,7 @@ count Int
 notes String?
 ```
 
-### 3.7 `GithubDailyStat`
+### 3.8 `GithubDailyStat`
 ```prisma
 id          String   @id @default(cuid())
 date        String   @unique   -- "YYYY-MM-DD"
@@ -143,7 +143,7 @@ commitCount Int
 updatedAt   DateTime @updatedAt
 ```
 
-### 3.8 `DailyCheckIn` — campfire daily check-in
+### 3.9 `DailyCheckIn` — campfire daily check-in
 ```prisma
 id        String   @id @default(cuid())
 date      String   @unique   -- "YYYY-MM-DD"
@@ -153,7 +153,7 @@ checkedAt DateTime @default(now())
 ```
 One row per calendar day. Upserted by `checkInToday()` server action. Powers the campfire animation on the dashboard and contributes +3 to the activity score.
 
-### 3.9 `Plan` ← primary aggregate root
+### 3.10 `Plan` ← primary aggregate root
 ```prisma
 id          String           @id @default(cuid())
 userId      String?          -- nullable; plan can exist without a User row
@@ -175,7 +175,7 @@ notes       DailyNote[]
 @@index([userId])
 ```
 
-### 3.10 `PlanConstraint`
+### 3.11 `PlanConstraint`
 ```prisma
 id               String  @id @default(cuid())
 planId           String
@@ -189,7 +189,7 @@ plan             Plan    @relation(...)
 @@index([planId])
 ```
 
-### 3.11 `PlanPhase`
+### 3.12 `PlanPhase`
 ```prisma
 id          String   @id @default(cuid())
 planId      String
@@ -209,7 +209,7 @@ tasks       PlanTask[]
 ```
 Phases: Month 1 Foundation → Month 2 Build → Month 3 Depth → Month 4 Fire.
 
-### 3.12 `PlanMilestone`
+### 3.13 `PlanMilestone`
 ```prisma
 id          String     @id @default(cuid())
 planId      String
@@ -225,27 +225,27 @@ phase       PlanPhase? @relation(...)
 @@index([phaseId])
 ```
 
-### 3.13 `WeeklyTemplate` ← recurring task blueprint
+### 3.14 `WeeklyTemplate` ← recurring task blueprint
 ```prisma
-id             String       @id @default(cuid())
+id             String     @id @default(cuid())
 planId         String
 phaseId        String?
-weekday        Int          -- 0=Sun … 6=Sat
+weekday        Int        -- 0=Sun … 6=Sat
 title          String
 detail         String?
-category       PlanCategory -- DSA|JAVA|DESIGN|DEVOPS|REVIEW|MOCK
+category       String     -- references Category.name by value (no FK)
 estimatedHours Float?
-isActive       Boolean      @default(true)
-sortOrder      Int          @default(0)
-plan           Plan         @relation(...)
-phase          PlanPhase?   @relation(...)
+isActive       Boolean    @default(true)
+sortOrder      Int        @default(0)
+plan           Plan       @relation(...)
+phase          PlanPhase? @relation(...)
 tasks          PlanTask[]
 
 @@index([planId, weekday, sortOrder])
 @@index([phaseId])
 ```
 
-### 3.14 `PlanTask` ← daily task instances
+### 3.15 `PlanTask` ← daily task instances
 ```prisma
 id             String          @id @default(cuid())
 planId         String
@@ -254,7 +254,7 @@ templateId     String?
 date           String          -- "YYYY-MM-DD"
 title          String
 detail         String?
-category       PlanCategory
+category       String          -- references Category.name by value (no FK)
 estimatedHours Float?
 completed      Boolean         @default(false)
 source         PlanTaskSource  @default(MANUAL)
@@ -269,7 +269,7 @@ template       WeeklyTemplate? @relation(...)
 @@index([templateId])
 ```
 
-### 3.15 `DailyNote`
+### 3.16 `DailyNote`
 ```prisma
 id        String   @id @default(cuid())
 planId    String
@@ -499,8 +499,8 @@ All mutations use Server Actions. Avoids auth boilerplate on every route, levera
 ### String dates over DateTime
 All calendar-date fields are `String "YYYY-MM-DD"`. Avoids timezone issues where UTC DateTime shifts dates for non-UTC users. String range queries (`gte: "2026-04-01"`) work reliably across all Postgres environments.
 
-### Prisma over Supabase client
-Prisma is the primary data layer. Supabase is the planned Postgres host for deploy (via `DATABASE_URL` connection string only). The Supabase JS SDK is installed for potential future RLS migration but is not in the active data path.
+### Neon Postgres for production
+Neon is the production Postgres host (plain `DATABASE_URL`, no SDK). Deployed and live as of 2026-04-30. Migrations run locally via `prisma migrate deploy` before each deploy; migration SQL seeds system categories. The Supabase JS SDK is installed as legacy prep code but is not in the active data path.
 
 ### Single-tenant data model
 Goal, DailyTask, LeetcodeLog, GithubDailyStat, Setting, DailyCheckIn have no `userId`. Sufficient for a personal tool. Documented explicitly so the tradeoff is clear if users are ever added.
@@ -538,6 +538,7 @@ tracker/
 │   │   │   ├── settings.ts
 │   │   │   ├── checkin.ts
 │   │   │   ├── leetcode.ts
+│   │   │   ├── categories.ts
 │   │   │   └── auth.ts
 │   │   ├── api/
 │   │   │   └── auth/[...nextauth]/route.ts
@@ -624,7 +625,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 - Dashboard: streak, summary grid, campfire check-in button, 365-day activity heatmap, combined chart
 - Planner: weekly board, template-driven task generation
 - Today: daily checklist, plan tasks, LeetCode log
-- Calendar: 120-day plan heatmap, day detail panel, daily note editor with hashtag categories
+- Calendar: 365-day activity heatmap (same component as /dashboard), day detail panel, daily note editor with hashtag categories
 - Goals: list with category tags, add/delete
 - Settings: GitHub PAT, sync trigger, plan constraints, plan bootstrap
 - GitHub activity sync (GraphQL contribution calendar)
@@ -655,9 +656,9 @@ SUPABASE_SERVICE_ROLE_KEY=
 
 ## 14. Remaining Build Order
 
-1. **Remote database** — provision Neon Postgres, run migrations, set `DATABASE_URL` in Vercel. Unblocks production deploy.
+1. ~~**Remote database**~~ ✅ Done — Neon Postgres live on Vercel (2026-04-30)
 2. **Goal metrics** — Add `targetValue`, `currentValue`, `deadline` to `Goal`; wire up progress bars on `/goals`
 3. **Stats page** — Move/expand charts to `/stats`; add LeetCode difficulty breakdown, GitHub weekly bars
 4. **LeetCode API** — Attempt unofficial GraphQL scrape on `/api/sync/leetcode`; fall back to manual
 5. **DnD task reorder** — Wire `@dnd-kit` to `WeeklyPlannerBoard` and `/today` task list
-6. **Cleanup** — Delete `MonthConsistencyGrid.tsx` (dead code); add loading skeletons, empty states, error boundaries
+6. **Loading skeletons, empty states, error boundaries**

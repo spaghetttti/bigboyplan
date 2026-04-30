@@ -1,5 +1,5 @@
 # Architecture Notes
-> Last updated: 2026-04-29 (session 2)
+> Last updated: 2026-04-30 (session 3)
 
 ---
 
@@ -22,8 +22,8 @@ Server (API boundary)
 Data layer
   └── Prisma 6 → PostgreSQL
         ├── Local dev: Docker Compose (port 5432)
-        └── Deploy: any Postgres connection string (DATABASE_URL)
-              target: Neon Postgres (plain connection string, no SDK)
+        └── Deploy: Neon Postgres (plain DATABASE_URL connection string, no SDK)
+              ✅ Live on Vercel + Neon as of 2026-04-30
 
 External APIs
   ├── GitHub GraphQL API — contribution calendar sync (PAT-authenticated)
@@ -194,7 +194,13 @@ Planned (not built): POST to unofficial `https://leetcode.com/graphql` to pull `
 
 ## Remote Database
 
-Target: **Neon Postgres** (free tier, no pause-on-inactivity, plain `DATABASE_URL` — no SDK needed). Connect via standard Postgres connection string; Prisma works identically to local Docker.
+**Neon Postgres** — free tier, no pause-on-inactivity, plain `DATABASE_URL` — no SDK needed. Connect via standard Postgres connection string; Prisma works identically to local Docker. **Live as of 2026-04-30.**
+
+Deploy checklist (completed):
+1. Provision Neon project → get `DATABASE_URL`
+2. Run `DATABASE_URL=<neon-url> npx prisma migrate deploy` locally — applies all 4 migrations including Category seed
+3. Set `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET` in Vercel Environment Variables
+4. Redeploy — `Error: DATABASE_URL is required` crash resolved
 
 `trySyncUserToSupabase()` (called from `upsertUserFromGitHub`) optionally mirrors `User` rows to Supabase `public.users` when `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SUPABASE_URL` are set. Errors are swallowed. This is legacy prep code — Supabase is no longer the planned deploy target.
 

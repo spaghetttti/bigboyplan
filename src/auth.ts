@@ -9,16 +9,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async signIn({ profile }) {
       if (!profile || !("id" in profile) || profile.id == null) {
+        console.error("[auth] signIn: Missing profile or profile.id");
         return false;
       }
-      await upsertUserFromGitHub({
-        id: profile.id as string | number,
-        login: "login" in profile ? (profile.login as string) : undefined,
-        email: "email" in profile ? (profile.email as string | null) : null,
-        avatar_url:
-          "avatar_url" in profile ? (profile.avatar_url as string | null) : null,
-      });
-      return true;
+      try {
+        await upsertUserFromGitHub({
+          id: profile.id as string | number,
+          login: "login" in profile ? (profile.login as string) : undefined,
+          email: "email" in profile ? (profile.email as string | null) : null,
+          avatar_url:
+            "avatar_url" in profile ? (profile.avatar_url as string | null) : null,
+        });
+        return true;
+      } catch (error) {
+        console.error("[auth] signIn: Error upserting user:", error);
+        return false;
+      }
     },
     async jwt({ token, account, profile }) {
       if (account && profile && "id" in profile && profile.id != null) {
