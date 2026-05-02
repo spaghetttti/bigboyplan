@@ -10,7 +10,7 @@ export function SummaryGrid({
           <p className="text-2xl font-extrabold tracking-tight text-text sm:text-[28px]">
             {item.value}
           </p>
-          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted2 ">
             {item.label}
           </p>
         </div>

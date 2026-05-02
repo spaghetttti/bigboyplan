@@ -66,6 +66,7 @@ export function CheckInButton({ isCheckedIn: initialCheckedIn }: { isCheckedIn: 
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: "rgba(0,0,0,0.72)",
+              pointerEvents: phase === "in" ? "auto" : "none",
             }}
             className={phase === "in" ? "campfire-backdrop-in" : "campfire-backdrop-out"}
           >
@@ -84,7 +85,7 @@ export function CheckInButton({ isCheckedIn: initialCheckedIn }: { isCheckedIn: 
               <p className="font-mono text-[12px] uppercase tracking-[0.25em] text-purple">
                 Checked in — keep the fire burning
               </p>
-              <p className="font-mono text-[10px] text-muted2">
+              <p className="font-mono text-[10px] text-muted2 ">
                 click anywhere to dismiss
               </p>
             </div>
@@ -105,7 +106,7 @@ export function CheckInButton({ isCheckedIn: initialCheckedIn }: { isCheckedIn: 
           className={`rounded-xl px-6 py-3 font-mono text-[11px] uppercase tracking-widest transition-colors duration-200 ${
             checkedIn
               ? "border border-purple bg-purple/20 text-purple"
-              : "border border-border2 bg-surface2 text-muted2 hover:border-purple hover:text-purple"
+              : "border border-border2 bg-surface2 text-muted2  hover:border-purple hover:text-purple"
           } disabled:cursor-default`}
         >
           {checkedIn ? "✓ Checked in" : pending ? "Checking in…" : "Check In"}

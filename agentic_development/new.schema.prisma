@@ -1,0 +1,317 @@
+// DevTrack — Prisma Schema
+// Database: PostgreSQL (Supabase) // but we will continue using Neon!!!!
+// Generated from ERD v1.0
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // required for Supabase connection pooling
+}
+
+// ─────────────────────────────────────────────
+// USERS & SETTINGS
+// ─────────────────────────────────────────────
+
+model User {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  githubId    String   @unique @map("github_id")
+  githubLogin String   @map("github_login")
+  email       String?
+  avatarUrl   String?  @map("avatar_url")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // relations
+  settings        UserSettings?
+  plans           Plan[]
+  taskCategories  TaskCategory[]
+  weeklyGoals     WeeklyGoal[]
+  tasks           Task[]
+  journalEntries  JournalEntry[]
+  dailyCheckins   DailyCheckin[]
+  leetcodeLogs    LeetcodeLog[]
+  githubStats     GithubDailyStat[]
+  weeklyReports   WeeklyReport[]
+
+  @@map("users")
+}
+
+model UserSettings {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @unique @map("user_id") @db.Uuid
+  leetcodeUsername String? @map("leetcode_username")
+  githubUsername  String?  @map("github_username")
+  githubToken     String?  @map("github_token") // encrypted at rest
+  timezone        String   @default("UTC")
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+// ─────────────────────────────────────────────
+// PLANS
+// ─────────────────────────────────────────────
+
+model Plan {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  title       String
+  description String?   @db.Text
+  startDate   DateTime  @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  isActive    Boolean   @default(true) @map("is_active")
+  isArchived  Boolean   @default(false) @map("is_archived")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // relations
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weeklyGoals   WeeklyGoal[]
+  weeklyReports WeeklyReport[]
+
+  @@map("plans")
+}
+
+// ─────────────────────────────────────────────
+// CATEGORIES (shared tag system)
+// ─────────────────────────────────────────────
+
+model TaskCategory {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String                          // e.g. "leetcode", "system-design", "java"
+  color     String   @default("#a78bfa")    // hex, used in UI tags
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // relations
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weeklyGoals  WeeklyGoal[]
+  taskTags     TaskTag[]
+  journalTags  JournalTag[]
+
+  @@unique([userId, name])               // no duplicate category names per user
+  @@map("task_categories")
+}
+
+// ─────────────────────────────────────────────
+// WEEKLY GOALS
+// ─────────────────────────────────────────────
+
+model WeeklyGoal {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String           @map("user_id") @db.Uuid
+  planId       String           @map("plan_id") @db.Uuid
+  categoryId   String?          @map("category_id") @db.Uuid
+  weekNumber   Int              @map("week_number")   // ISO week: 1–53
+  year         Int                                    // e.g. 2025
+  title        String                                 // "Solve 5 leetcode problems"
+  description  String?          @db.Text
+  targetValue  Int              @map("target_value")  // e.g. 5
+  metricUnit   String           @map("metric_unit")   // "problems", "articles", "commits"
+  actualValue  Int              @default(0) @map("actual_value")
+  status       WeeklyGoalStatus @default(PENDING)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  // relations
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     Plan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  category TaskCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, planId, weekNumber, year, title])
+  @@map("weekly_goals")
+}
+
+enum WeeklyGoalStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  MISSED
+
+  @@map("weekly_goal_status")
+}
+
+// ─────────────────────────────────────────────
+// TASKS
+// ─────────────────────────────────────────────
+
+model Task {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  title       String
+  notes       String?   @db.Text
+  completed   Boolean   @default(false)
+  dueDate     DateTime? @map("due_date") @db.Date
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // relations
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskTags TaskTag[]
+
+  @@map("tasks")
+}
+
+// junction: tasks ↔ task_categories (many-to-many)
+model TaskTag {
+  taskId     String @map("task_id") @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+
+  task     Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  category TaskCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, categoryId])
+  @@map("task_tags")
+}
+
+// ─────────────────────────────────────────────
+// JOURNAL
+// ─────────────────────────────────────────────
+
+model JournalEntry {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  date      DateTime @db.Date
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  journalTags JournalTag[]
+
+  @@unique([userId, date])    // one entry per user per day
+  @@map("journal_entries")
+}
+
+// junction: journal_entries ↔ task_categories (many-to-many)
+model JournalTag {
+  journalId  String @map("journal_id") @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+
+  journal  JournalEntry @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  category TaskCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([journalId, categoryId])
+  @@map("journal_tags")
+}
+
+// ─────────────────────────────────────────────
+// DAILY CHECK-IN (streak tracking)
+// ─────────────────────────────────────────────
+
+model DailyCheckin {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  date        DateTime @db.Date
+  checkedInAt DateTime @default(now()) @map("checked_in_at") @db.Timestamptz
+
+  // relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])    // one check-in per user per day
+  @@map("daily_checkins")
+}
+
+// ─────────────────────────────────────────────
+// LEETCODE LOGS
+// ─────────────────────────────────────────────
+
+model LeetcodeLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  date        DateTime @db.Date
+  easyCount   Int      @default(0) @map("easy_count")
+  mediumCount Int      @default(0) @map("medium_count")
+  hardCount   Int      @default(0) @map("hard_count")
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])    // one log per user per day — upsert on conflict
+  @@map("leetcode_logs")
+}
+
+// ─────────────────────────────────────────────
+// GITHUB DAILY STATS
+// ─────────────────────────────────────────────
+
+model GithubDailyStat {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  date      DateTime @db.Date
+  commits   Int      @default(0)
+  prs       Int      @default(0)
+  reviews   Int      @default(0)
+  syncedAt  DateTime @default(now()) @map("synced_at") @db.Timestamptz
+
+  // relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])    // append-only: ON CONFLICT DO NOTHING in sync logic
+  @@map("github_daily_stats")
+}
+
+// ─────────────────────────────────────────────
+// WEEKLY REPORTS
+// ─────────────────────────────────────────────
+
+model WeeklyReport {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  planId      String?  @map("plan_id") @db.Uuid   // nullable: user may have no active plan
+  weekNumber  Int      @map("week_number")          // ISO week: 1–53
+  year        Int
+  snapshot    Json                                  // frozen blob — see snapshot shape below
+  generatedAt DateTime @default(now()) @map("generated_at") @db.Timestamptz
+
+  // relations
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan Plan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, weekNumber, year])
+  @@map("weekly_reports")
+}
+
+// WeeklyReport.snapshot shape (TypeScript interface for reference):
+//
+// interface WeeklyReportSnapshot {
+//   weekNumber: number
+//   year: number
+//   planTitle: string | null
+//   checkinCount: number                    // days checked in this week (max 7)
+//   streak: number                          // current streak at time of generation
+//   leetcode: {
+//     easy: number
+//     medium: number
+//     hard: number
+//     total: number
+//     notes: string[]
+//   }
+//   github: {
+//     commits: number
+//     prs: number
+//     reviews: number
+//   }
+//   weeklyGoals: Array<{
+//     title: string
+//     category: string | null
+//     targetValue: number
+//     actualValue: number
+//     metricUnit: string
+//     status: 'COMPLETED' | 'MISSED' | 'IN_PROGRESS'
+//   }>
+//   tasks: {
+//     completed: number
+//     total: number
+//     completedTitles: string[]
+//     missedTitles: string[]
+//   }
+//   journalEntryCount: number
+// }

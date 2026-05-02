@@ -1,21 +1,13 @@
-const TAG_MAP: Record<string, string> = {
-  dsa: "DSA",
-  java: "JAVA",
-  design: "DESIGN",
-  devops: "DEVOPS",
-  review: "REVIEW",
-};
-
-export const SUPPORTED_NOTE_TAGS = Object.keys(TAG_MAP);
-
+/**
+ * Extracts #hashtag mentions from journal-entry content.
+ * Returns the unique uppercased tag names (without the leading `#`).
+ * Callers match these against the user's Category names.
+ */
 export function extractGoalMentionsFromNote(content: string): string[] {
   const out = new Set<string>();
-  const matches = content.match(/#[a-zA-Z]+/g) ?? [];
+  const matches = content.match(/#[a-zA-Z][a-zA-Z0-9_-]*/g) ?? [];
   for (const raw of matches) {
-    const key = raw.slice(1).toLowerCase();
-    const mapped = TAG_MAP[key];
-    if (mapped) out.add(mapped);
+    out.add(raw.slice(1).toUpperCase());
   }
   return Array.from(out);
 }
-

@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/db";
 import { trySyncUserToSupabase } from "@/lib/auth/sync-user-supabase";
+import { ensureUserCategories } from "@/lib/categories";
 
 export type GitHubProfileInput = {
   id: string | number;
@@ -30,6 +31,16 @@ export async function upsertUserFromGitHub(profile: GitHubProfileInput) {
     },
   });
 
-  await trySyncUserToSupabase(user);
+  await prisma.userSettings.upsert({
+    where: { userId: user.id },
+    create: { userId: user.id, githubUsername: login },
+    update: {},
+  });
+
+  await Promise.all([
+    trySyncUserToSupabase(user),
+    ensureUserCategories(user.id),
+  ]);
+
   return user;
 }

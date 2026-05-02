@@ -7,32 +7,35 @@ type PrismaDelegate = {
   create: (...args: any[]) => Promise<any>;
   createMany: (...args: any[]) => Promise<any>;
   update: (...args: any[]) => Promise<any>;
+  updateMany: (...args: any[]) => Promise<any>;
   upsert: (...args: any[]) => Promise<any>;
+  delete: (...args: any[]) => Promise<any>;
+  deleteMany: (...args: any[]) => Promise<any>;
+  count: (...args: any[]) => Promise<number>;
+  groupBy: (...args: any[]) => Promise<any[]>;
 };
 
 type PrismaWithModels = PrismaClient & {
   user: PrismaDelegate;
-  setting: PrismaDelegate;
-  goal: PrismaDelegate;
-  dailyTask: PrismaDelegate;
+  userSettings: PrismaDelegate;
+  category: PrismaDelegate;
+  plan: PrismaDelegate;
+  weeklyGoal: PrismaDelegate;
+  task: PrismaDelegate;
+  taskTag: PrismaDelegate;
   taskCompletion: PrismaDelegate;
+  journalEntry: PrismaDelegate;
+  journalTag: PrismaDelegate;
   leetcodeLog: PrismaDelegate;
   githubDailyStat: PrismaDelegate;
-  plan: PrismaDelegate;
-  planConstraint: PrismaDelegate;
-  planPhase: PrismaDelegate;
-  planMilestone: PrismaDelegate;
-  weeklyTemplate: PrismaDelegate;
-  planTask: PrismaDelegate;
-  dailyNote: PrismaDelegate;
   dailyCheckIn: PrismaDelegate;
-  category: PrismaDelegate;
+  weeklyReport: PrismaDelegate;
 };
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaWithModels };
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
-    "DATABASE_URL is required. Use local Docker Postgres or Supabase Postgres.",
+    "DATABASE_URL is required. Use local Docker Postgres or Neon Postgres.",
   );
 }
 

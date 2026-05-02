@@ -21,8 +21,6 @@ export async function trySyncUserToSupabase(user: User): Promise<void> {
         github_login: user.githubLogin,
         email: user.email,
         avatar_url: user.avatarUrl,
-        leetcode_username: user.leetcodeUsername,
-        github_username: user.githubUsername,
       },
       { onConflict: "github_id" },
     );

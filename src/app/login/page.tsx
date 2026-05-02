@@ -11,7 +11,7 @@ export default function LoginPage() {
         <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-text">
           Track the grind.
         </h1>
-        <p className="mt-2 text-sm text-muted2">
+        <p className="mt-2 text-sm text-muted2 ">
           Sign in with GitHub to sync your progress.
         </p>
         <form

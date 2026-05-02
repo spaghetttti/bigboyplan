@@ -23,12 +23,12 @@ export function SyncGithubButton({
             else setMessage(r.error);
           });
         }}
-        className="rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2 transition-colors hover:border-teal hover:text-teal disabled:opacity-50"
+        className="rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2  transition-colors hover:border-teal hover:text-teal disabled:opacity-50"
       >
         {pending ? "Syncing…" : "Sync GitHub now"}
       </button>
       {message ? (
-        <p className="mt-2 text-sm text-muted2" role="status">
+        <p className="mt-2 text-sm text-muted2 " role="status">
           {message}
         </p>
       ) : null}

@@ -34,22 +34,19 @@ export function ActivityHeatmap({ data }: Props) {
         ${meta.github} GitHub
       </div>`,
     ];
-    if (meta.dailyTasks > 0 || Object.keys(meta.planTasksByCategory).length > 0) {
-      const tasks = [
-        meta.dailyTasks > 0 ? `${meta.dailyTasks} daily` : null,
-        ...Object.entries(meta.planTasksByCategory).map(
-          ([cat, n]) => `${n} ${cat.toLowerCase()}`
-        ),
-      ].filter(Boolean);
-      if (tasks.length > 0) {
-        lines.push(`<div class="mt-1 text-[10px]">${tasks.join(" · ")}</div>`);
-      }
+    const taskParts = [
+      meta.recurringCompletions > 0 ? `${meta.recurringCompletions} recurring` : null,
+      meta.scheduledTasksDone > 0 ? `${meta.scheduledTasksDone} scheduled` : null,
+      meta.journaled ? "journaled" : null,
+    ].filter(Boolean);
+    if (taskParts.length > 0) {
+      lines.push(`<div class="mt-1 text-[10px]">${taskParts.join(" · ")}</div>`);
     }
     return lines.join("");
   };
 
   if (!data || data.length === 0) {
-    return <div className="text-muted2 text-sm">No data available</div>;
+    return <div className="text-muted2  text-sm">No data available</div>;
   }
 
   const startDate = new Date(data[0].date);

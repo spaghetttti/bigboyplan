@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { auth } from "@/auth";
-import { togglePlanTaskCompletion, upsertDailyNote } from "@/app/actions/plan";
-import { addDailyTaskForm, toggleTaskCompletion } from "@/app/actions/tasks";
+import { requireAuth } from "@/lib/auth/require-auth";
+import { toggleTaskCompletionForm } from "@/app/actions/tasks";
 import { upsertLeetcodeForm } from "@/app/actions/leetcode";
+import { upsertJournalEntryForm } from "@/app/actions/journal";
 import { prisma } from "@/lib/db";
 import { addDaysISO, todayISO } from "@/lib/dates";
-import { tagClassForCategory } from "@/lib/tags";
-import { ensureSeededPlanForUser, generateTasksFromTemplates } from "@/lib/plan/service";
+import { listTasksForDate, getCompletionsForDate } from "@/lib/tasks";
+import { isoWeekFor, listWeeklyGoals } from "@/lib/weekly-goals";
+import { getJournalEntry } from "@/lib/journal";
 import { PlanTag } from "@/components/plan/PlanTag";
-import { extractGoalMentionsFromNote } from "@/lib/plan/note-tags";
 import { CheckInButton } from "@/components/CheckInButton";
+import { tagClassForCategory } from "@/lib/tags";
 
 export const dynamic = "force-dynamic";
 
@@ -23,35 +24,28 @@ export default async function TodayPage({
 }: {
   searchParams: Promise<{ date?: string }>;
 }) {
+  const userId = await requireAuth();
+
   const sp = await searchParams;
   const date = validDateOrToday(sp.date);
   const prev = addDaysISO(date, -1);
   const next = addDaysISO(date, 1);
   const today = todayISO();
-  const session = await auth();
-  const plan = await ensureSeededPlanForUser(session?.user?.id);
-  await generateTasksFromTemplates(plan.id, addDaysISO(date, -1), addDaysISO(date, 1));
+  const { weekNumber, year } = isoWeekFor(date);
 
-  const [tasks, completions, leet, goals, planTasks, planNote, checkIn] = await Promise.all([
-    prisma.dailyTask.findMany({
-      where: { archived: false },
-      orderBy: { sortOrder: "asc" },
-    }),
-    prisma.taskCompletion.findMany({ where: { date } }),
-    prisma.leetcodeLog.findUnique({ where: { date } }),
-    prisma.goal.findMany({ orderBy: { sortOrder: "asc" }, take: 8 }),
-    prisma.planTask.findMany({
-      where: { planId: plan.id, date },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.dailyNote.findUnique({
-      where: { planId_date: { planId: plan.id, date } },
-    }),
-    prisma.dailyCheckIn.findUnique({ where: { date: today } }),
+  const [tasks, completedIds, leet, weeklyGoals, journalEntry, checkIn] = await Promise.all([
+    listTasksForDate(userId, date),
+    getCompletionsForDate(userId, date),
+    prisma.leetcodeLog.findUnique({ where: { userId_date: { userId, date } } }),
+    listWeeklyGoals(userId, weekNumber, year),
+    getJournalEntry(userId, date),
+    date === today
+      ? prisma.dailyCheckIn.findUnique({ where: { userId_date: { userId, date: today } } })
+      : Promise.resolve(null),
   ]);
 
-  const done = new Set(completions.map((c) => c.taskId));
-  const noteMentions = extractGoalMentionsFromNote(planNote?.content ?? "");
+  const recurring = tasks.filter((t) => t.isRecurring);
+  const scheduled = tasks.filter((t) => !t.isRecurring);
 
   return (
     <main>
@@ -60,7 +54,7 @@ export default async function TodayPage({
       </p>
       <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
         <h2 className="text-2xl font-bold tracking-tight text-text">Today</h2>
-        <div className="flex items-center gap-2 font-mono text-[11px] text-muted2">
+        <div className="flex items-center gap-2 font-mono text-[11px] text-muted2 ">
           <Link
             href={`/today?date=${prev}`}
             className="rounded border border-border2 px-2 py-1 hover:border-purple hover:text-purple"
@@ -83,140 +77,191 @@ export default async function TodayPage({
             Next →
           </Link>
           {date !== today ? (
-            <Link
-              href="/today"
-              className="ml-2 text-purple hover:underline"
-            >
+            <Link href="/today" className="ml-2 text-purple hover:underline">
               Jump to today
             </Link>
           ) : null}
         </div>
       </div>
 
-      {date === today && (
-        <CheckInButton isCheckedIn={!!checkIn} />
-      )}
+      {date === today && <CheckInButton isCheckedIn={!!checkIn} />}
 
-      <section className="mt-10 rounded-2xl border border-border bg-surface p-5 sm:p-6">
-        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-          Checklist
+      {/* Recurring checklist */}
+      <section className="mt-8 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted2 ">
+          Daily checklist
         </h3>
         <ul className="mt-4 flex flex-col gap-3">
-          {tasks.length === 0 ? (
-            <li className="text-sm text-muted2">No tasks yet — add one below.</li>
+          {recurring.length === 0 ? (
+            <li className="text-sm text-muted2 ">
+              No recurring tasks — add one in the{" "}
+              <Link href="/planner" className="text-purple hover:underline">
+                Planner
+              </Link>
+              .
+            </li>
           ) : (
-            tasks.map((t) => (
+            recurring.map((t) => {
+              const done = completedIds.has(t.id);
+              return (
+                <li key={t.id} className="flex items-start gap-3">
+                  <form
+                    action={toggleTaskCompletionForm.bind(null, t.id, date)}
+                    className="pt-0.5"
+                  >
+                    <button
+                      type="submit"
+                      aria-pressed={done}
+                      className={`h-5 w-5 shrink-0 rounded border-2 transition-colors ${
+                        done
+                          ? "border-purple bg-purple/30"
+                          : "border-border2 hover:border-muted2"
+                      }`}
+                      title={done ? "Mark incomplete" : "Mark done"}
+                    />
+                  </form>
+                  <div className="flex flex-col gap-0.5">
+                    <span
+                      className={`text-sm leading-relaxed ${
+                        done ? "text-muted2 line-through" : "text-text"
+                      }`}
+                    >
+                      {t.title}
+                    </span>
+                    {t.taskTags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {t.taskTags.map((tt) => (
+                          <PlanTag key={tt.categoryId} category={tt.category.name} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })
+          )}
+        </ul>
+      </section>
+
+      {/* Scheduled tasks for the day */}
+      {scheduled.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+          <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted2 ">
+            Scheduled for today
+          </h3>
+          <ul className="mt-4 flex flex-col gap-3">
+            {scheduled.map((t) => (
               <li key={t.id} className="flex items-start gap-3">
                 <form
-                  action={toggleTaskCompletion.bind(null, t.id, date)}
+                  action={toggleTaskCompletionForm.bind(null, t.id, date)}
                   className="pt-0.5"
                 >
                   <button
                     type="submit"
-                    aria-pressed={done.has(t.id)}
+                    aria-pressed={t.completed}
                     className={`h-5 w-5 shrink-0 rounded border-2 transition-colors ${
-                      done.has(t.id)
+                      t.completed
                         ? "border-purple bg-purple/30"
                         : "border-border2 hover:border-muted2"
                     }`}
-                    title={done.has(t.id) ? "Mark incomplete" : "Mark done"}
                   />
                 </form>
-                <span
-                  className={`text-sm leading-relaxed ${
-                    done.has(t.id) ? "text-muted line-through" : "text-text"
-                  }`}
-                >
-                  {t.title}
-                </span>
-              </li>
-            ))
-          )}
-        </ul>
-
-        <form action={addDailyTaskForm} className="mt-6 flex flex-wrap gap-2 border-t border-border pt-6">
-          <input
-            type="text"
-            name="title"
-            placeholder="New daily task"
-            className="min-w-[200px] flex-1"
-            autoComplete="off"
-          />
-          <button
-            type="submit"
-            className="rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2 transition-colors hover:border-purple hover:text-purple"
-          >
-            Add task
-          </button>
-        </form>
-      </section>
-
-      <section className="mt-8 rounded-2xl border border-border bg-surface p-5 sm:p-6">
-        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-          Plan day details
-        </h3>
-        <ul className="mt-3 flex gap-2">
-          {planTasks.length === 0 ? (
-            <li className="text-sm text-muted2">No seeded plan tasks for this day.</li>
-          ) : (
-            planTasks.map((task) => (
-              <li key={task.id} className="rounded border border-border p-2">
-                <div className="mb-1 flex-row items-center justify-between">
-                  <PlanTag category={task.category} />
+                <div className="flex flex-col gap-0.5">
+                  <span
+                    className={`text-sm ${
+                      t.completed ? "text-muted2 line-through" : "text-text"
+                    }`}
+                  >
+                    {t.title}
+                  </span>
+                  {t.taskTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {t.taskTags.map((tt) => (
+                        <PlanTag key={tt.categoryId} category={tt.category.name} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </li>
-            ))
-          )}
-        </ul>
-        <form action={upsertDailyNote} className="mt-4">
-          <input type="hidden" name="planId" value={plan.id} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Journal */}
+      <section className="mt-6 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted2 ">
+          Journal
+        </h3>
+        <p className="mt-1 text-xs text-muted2 ">
+          Use #hashtags to tag categories: #dsa #java #design #devops #review
+        </p>
+        <form action={upsertJournalEntryForm} className="mt-3">
           <input type="hidden" name="date" value={date} />
-          <p className="mb-1 text-xs text-muted2">
-            Add goal hashtags in note: #dsa #java #design #devops #review
-          </p>
           <textarea
             name="content"
             rows={3}
             className="w-full"
             placeholder="What did you work on today?"
-            defaultValue={planNote?.content ?? ""}
+            defaultValue={journalEntry?.content ?? ""}
           />
           <button
             type="submit"
-            className="mt-2 rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2 transition-colors hover:border-purple hover:text-purple"
+            className="mt-2 rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2  transition-colors hover:border-purple hover:text-purple"
           >
-            Save day note
+            Save journal
           </button>
         </form>
-        {noteMentions.length > 0 ? (
+        {journalEntry && journalEntry.tags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {noteMentions.map((tag) => (
-              <PlanTag key={tag} category={tag} />
+            {journalEntry.tags.map((t) => (
+              <PlanTag key={t.categoryId} category={t.category.name} />
             ))}
           </div>
-        ) : null}
+        )}
       </section>
 
-      <section className="mt-8 rounded-2xl border border-border bg-surface p-5 sm:p-6">
-        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+      {/* LeetCode log */}
+      <section className="mt-6 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+        <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted2 ">
           LeetCode (manual)
         </h3>
-        <form action={upsertLeetcodeForm} className="mt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
-          <label className="flex flex-col gap-1 text-xs text-muted2">
-            Date
-            <input type="date" name="date" defaultValue={date} required />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted2">
-            Problems solved
+        <form
+          action={upsertLeetcodeForm}
+          className="mt-4 grid gap-3 sm:grid-cols-4 sm:items-end"
+        >
+          <input type="hidden" name="date" value={date} />
+          <label className="flex flex-col gap-1 text-xs text-muted2 ">
+            Easy
             <input
               type="number"
-              name="count"
+              name="easyCount"
               min={0}
-              defaultValue={leet?.count ?? 0}
-              className="w-28"
+              defaultValue={leet?.easyCount ?? 0}
+              className="w-full"
             />
           </label>
-          <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs text-muted2">
+          <label className="flex flex-col gap-1 text-xs text-muted2 ">
+            Medium
+            <input
+              type="number"
+              name="mediumCount"
+              min={0}
+              defaultValue={leet?.mediumCount ?? 0}
+              className="w-full"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted2 ">
+            Hard
+            <input
+              type="number"
+              name="hardCount"
+              min={0}
+              defaultValue={leet?.hardCount ?? 0}
+              className="w-full"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted2  sm:col-span-4">
             Notes
             <input
               type="text"
@@ -227,38 +272,58 @@ export default async function TodayPage({
           </label>
           <button
             type="submit"
-            className="rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2 transition-colors hover:border-purple hover:text-purple"
+            className="rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2  transition-colors hover:border-purple hover:text-purple sm:col-span-4 sm:self-end"
           >
             Save log
           </button>
         </form>
       </section>
 
-      {goals.length > 0 ? (
-        <section className="mt-8 rounded-2xl border border-border bg-surface p-5 sm:p-6">
-          <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-            Goals snapshot
+      {/* Weekly goals sidebar */}
+      {weeklyGoals.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+          <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted2 ">
+            This week's goals
           </h3>
-          <ul className="mt-4 flex flex-col gap-2">
-            {goals.map((g) => (
-              <li key={g.id} className="flex flex-wrap items-center gap-2 text-sm text-muted2">
-                <span
-                  className={`inline-block rounded border px-2 py-0.5 font-mono text-[10px] uppercase ${tagClassForCategory(g.category)}`}
-                >
-                  {g.category}
-                </span>
-                <span className="text-text">{g.title}</span>
-              </li>
-            ))}
+          <ul className="mt-4 flex flex-col gap-3">
+            {weeklyGoals.map((g) => {
+              const pct =
+                g.targetValue > 0
+                  ? Math.min(100, Math.round((g.actualValue / g.targetValue) * 100))
+                  : 0;
+              return (
+                <li key={g.id} className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-text">{g.title}</span>
+                    <span className="font-mono text-[10px] text-muted2 ">
+                      {g.actualValue}/{g.targetValue} {g.metricUnit}
+                    </span>
+                  </div>
+                  {g.category && (
+                    <span
+                      className={`inline-block w-fit rounded border px-2 py-0.5 font-mono text-[10px] uppercase ${tagClassForCategory(g.category.name)}`}
+                    >
+                      {g.category.name}
+                    </span>
+                  )}
+                  <div className="h-1.5 w-full rounded-full bg-surface2">
+                    <div
+                      className="h-full rounded-full bg-purple transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </li>
+              );
+            })}
           </ul>
           <Link
             href="/goals"
             className="mt-4 inline-block font-mono text-[11px] text-purple hover:underline"
           >
-            Manage goals →
+            Manage weekly goals →
           </Link>
         </section>
-      ) : null}
+      )}
     </main>
   );
 }

@@ -1,19 +1,47 @@
 import { prisma } from "@/lib/db";
 
-export async function getSetting(key: string): Promise<string | null> {
-  const row = await prisma.setting.findUnique({ where: { key } });
-  return row?.value ?? null;
+export type UserSettingsRow = {
+  id: string;
+  userId: string;
+  leetcodeUsername: string | null;
+  githubUsername: string | null;
+  githubToken: string | null;
+  timezone: string;
+  updatedAt: Date;
+};
+
+export type UserSettingsPatch = Partial<{
+  leetcodeUsername: string | null;
+  githubUsername: string | null;
+  githubToken: string | null;
+  timezone: string;
+}>;
+
+/** Reads the user's settings row, creating an empty one if missing. */
+export async function getUserSettings(userId: string): Promise<UserSettingsRow> {
+  const row = await prisma.userSettings.findUnique({ where: { userId } });
+  if (row) return row;
+  const userExists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!userExists) throw new Error(`User ${userId} not found — session is stale, please sign in again`);
+  return prisma.userSettings.create({ data: { userId } });
 }
 
-export async function setSetting(key: string, value: string): Promise<void> {
-  await prisma.setting.upsert({
-    where: { key },
-    create: { key, value },
-    update: { value },
+export async function updateUserSettings(
+  userId: string,
+  patch: UserSettingsPatch,
+): Promise<UserSettingsRow> {
+  return prisma.userSettings.upsert({
+    where: { userId },
+    create: { userId, ...patch },
+    update: patch,
   });
 }
 
-export const SETTING_GITHUB_PAT = "github_pat";
-export const SETTING_LAST_GH_SYNC = "last_github_sync_at";
-export const SETTING_LAST_GH_ERROR = "last_github_sync_error";
-export const SETTING_GH_LOGIN = "github_login";
+export async function getGithubToken(userId: string): Promise<string | null> {
+  const row = await prisma.userSettings.findUnique({
+    where: { userId },
+    select: { githubToken: true },
+  });
+  const t = row?.githubToken?.trim();
+  return t && t.length > 0 ? t : null;
+}

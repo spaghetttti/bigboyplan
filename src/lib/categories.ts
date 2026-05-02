@@ -8,8 +8,34 @@ export type CategoryRow = {
   isSystem: boolean;
 };
 
-export async function getAllCategories(): Promise<CategoryRow[]> {
-  return prisma.category.findMany({ orderBy: { sortOrder: "asc" } });
+const SYSTEM_CATEGORIES: { name: string; color: string; sortOrder: number }[] = [
+  { name: "DSA",    color: "#a78bfa", sortOrder: 1 },
+  { name: "JAVA",   color: "#2dd4bf", sortOrder: 2 },
+  { name: "DESIGN", color: "#fbbf24", sortOrder: 3 },
+  { name: "DEVOPS", color: "#f87171", sortOrder: 4 },
+  { name: "REVIEW", color: "#4ade80", sortOrder: 5 },
+  { name: "MOCK",   color: "#60a5fa", sortOrder: 6 },
+  { name: "OTHER",  color: "#6b6966", sortOrder: 7 },
+];
+
+export async function getAllCategories(userId: string): Promise<CategoryRow[]> {
+  return prisma.category.findMany({
+    where: { userId },
+    orderBy: { sortOrder: "asc" },
+  });
+}
+
+/** Seeds system categories for a user if they don't exist yet. Called on first login. */
+export async function ensureUserCategories(userId: string): Promise<void> {
+  await Promise.all(
+    SYSTEM_CATEGORIES.map((cat) =>
+      prisma.category.upsert({
+        where: { userId_name: { userId, name: cat.name } },
+        create: { userId, name: cat.name, color: cat.color, sortOrder: cat.sortOrder, isSystem: true },
+        update: {},
+      })
+    )
+  );
 }
 
 export function colorClassForCategory(name: string, categories: CategoryRow[]): string {
@@ -18,8 +44,6 @@ export function colorClassForCategory(name: string, categories: CategoryRow[]): 
   return "bg-[var(--surface2)] border-[var(--border2)] text-[var(--muted2)]";
 }
 
-// Maps the stored hex colors (which match design system tokens) to Tailwind classes.
-// This keeps PlanTag a pure presentational component with no DB dependency.
 function colorToTailwindClass(hex: string): string {
   switch (hex.toLowerCase()) {
     case "#a78bfa": return "bg-[var(--purple-dim)] border-[rgba(167,139,250,0.25)] text-[var(--purple)]";

@@ -13,7 +13,7 @@ import {
 import { formatChartTick } from "@/lib/chart";
 import type { DayAggregate } from "@/lib/types";
 
-const axis = { stroke: "var(--muted)", fontSize: 10, fontFamily: "var(--font-dm-mono)" };
+const axis = { stroke: "var(--purple-dim)", fontSize: 10, fontFamily: "var(--font-dm-mono)", fill: "white" };
 const grid = { stroke: "var(--border2)", strokeOpacity: 0.5 };
 
 export function DashboardCharts({ data }: { data: DayAggregate[] }) {
@@ -24,7 +24,7 @@ export function DashboardCharts({ data }: { data: DayAggregate[] }) {
 
   return (
     <div className="mt-10 rounded-2xl border border-border bg-surface p-4 sm:p-6">
-      <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+      <p className="mb-4 font-mono text-[10px] uppercase tracking-[0.1em] text-muted2 ">
         Last 30 days
       </p>
       <div className="h-[300px] min-h-[280px] w-full min-w-0">

@@ -17,7 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-purple mb-2">
-              Local tracker
+              Big Boy Tracker
             </p>
             <h1 className="text-3xl font-extrabold tracking-tight text-text sm:text-4xl">
               Goals <span className="text-purple">&</span> progress
@@ -28,7 +28,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className="rounded border border-border2 px-3 py-1.5 text-muted2 transition-colors hover:border-purple hover:text-purple"
+                className="rounded border border-border2 px-3 py-1.5 text-muted2  transition-colors hover:border-purple hover:text-purple"
               >
                 {item.label}
               </Link>
@@ -36,7 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <form action={signOutAction}>
               <button
                 type="submit"
-                className="rounded border border-border2 px-3 py-1.5 text-muted2 transition-colors hover:border-coral hover:text-coral"
+                className="rounded border border-border2 px-3 py-1.5 text-muted2  transition-colors hover:border-coral hover:text-coral"
               >
                 Sign out
               </button>

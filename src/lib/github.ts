@@ -1,11 +1,5 @@
 import { prisma } from "@/lib/db";
-import {
-  SETTING_GITHUB_PAT,
-  SETTING_GH_LOGIN,
-  SETTING_LAST_GH_ERROR,
-  SETTING_LAST_GH_SYNC,
-  setSetting,
-} from "@/lib/settings";
+import { getGithubToken, updateUserSettings } from "@/lib/settings";
 
 type ContributionDay = { date: string; contributionCount: number };
 
@@ -45,28 +39,15 @@ const CONTRIBUTIONS_QUERY = `
   }
 `;
 
-export async function syncGithubContributions(): Promise<{ ok: true } | { ok: false; error: string }> {
-  const [token, lastSyncSetting] = await Promise.all([
-    prisma.setting.findUnique({ where: { key: SETTING_GITHUB_PAT } }),
-    prisma.setting.findUnique({ where: { key: SETTING_LAST_GH_SYNC } }),
-  ]);
+export type GithubSyncResult = { ok: true; login: string | null } | { ok: false; error: string };
 
-  if (!token?.value?.trim()) {
+export async function syncGithubContributions(userId: string): Promise<GithubSyncResult> {
+  const token = await getGithubToken(userId);
+  if (!token) {
     return { ok: false, error: "Add a GitHub personal access token in Settings." };
   }
 
-  // On first sync fetch full history; subsequent syncs only fetch since last sync
-  // plus a 7-day buffer so any GitHub recalculations in the recent window still land.
-  const lastSyncDate = lastSyncSetting?.value ? new Date(lastSyncSetting.value) : null;
-  const daysSinceLastSync = lastSyncDate
-    ? Math.ceil((Date.now() - lastSyncDate.getTime()) / 86_400_000)
-    : null;
-  const rangeDays = daysSinceLastSync !== null
-    ? Math.min(daysSinceLastSync + 7, GITHUB_MAX_RANGE_DAYS)
-    : GITHUB_MAX_RANGE_DAYS;
-
   const fetchContributionWindow = async (days: number) => {
-    // GitHub requires from->to window to be <= 1 year.
     const to = new Date();
     to.setUTCHours(23, 59, 59, 999);
     const from = new Date(to);
@@ -81,60 +62,52 @@ export async function syncGithubContributions(): Promise<{ ok: true } | { ok: fa
     const res = await fetch(GITHUB_GRAPHQL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token.value.trim()}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       body,
     });
 
-    if (!res.ok) {
-      return { ok: false as const, error: `GitHub HTTP ${res.status}` };
-    }
+    if (!res.ok) return { ok: false as const, error: `GitHub HTTP ${res.status}` };
 
     const json = (await res.json()) as GraphQLResponse;
     if (json.errors?.length) {
       return { ok: false as const, error: json.errors.map((e) => e.message).join("; ") };
     }
-
     return { ok: true as const, json };
   };
 
-  let response = await fetchContributionWindow(rangeDays);
+  let response = await fetchContributionWindow(GITHUB_MAX_RANGE_DAYS);
   if (!response.ok && response.error.includes("must not exceed 1 year")) {
     response = await fetchContributionWindow(GITHUB_FALLBACK_RANGE_DAYS);
   }
   if (!response.ok) {
-    await setSetting(SETTING_LAST_GH_ERROR, response.error);
     return { ok: false, error: response.error };
   }
 
   const { json } = response;
   const weeks = json.data?.viewer?.contributionsCollection?.contributionCalendar?.weeks;
-  const login = json.data?.viewer?.login;
+  const login = json.data?.viewer?.login ?? null;
 
   if (!weeks?.length) {
-    await setSetting(SETTING_LAST_GH_ERROR, "No contribution data returned.");
     return { ok: false, error: "No contribution data returned." };
   }
 
   const days: ContributionDay[] = weeks.flatMap((w) => w.contributionDays ?? []);
 
-  // Upsert only the fetched window — historical rows outside this window are untouched.
-  await prisma.$transaction(
+  await Promise.all(
     days.map((d) =>
       prisma.githubDailyStat.upsert({
-        where: { date: d.date.slice(0, 10) },
-        create: { date: d.date.slice(0, 10), commitCount: d.contributionCount },
-        update: { commitCount: d.contributionCount },
-      })
-    )
+        where: { userId_date: { userId, date: d.date.slice(0, 10) } },
+        create: { userId, date: d.date.slice(0, 10), commits: d.contributionCount },
+        update: { commits: d.contributionCount },
+      }),
+    ),
   );
 
-  await Promise.all([
-    setSetting(SETTING_LAST_GH_SYNC, new Date().toISOString()),
-    setSetting(SETTING_LAST_GH_ERROR, ""),
-    ...(login ? [setSetting(SETTING_GH_LOGIN, login)] : []),
-  ]);
+  if (login) {
+    await updateUserSettings(userId, { githubUsername: login });
+  }
 
-  return { ok: true };
+  return { ok: true, login };
 }

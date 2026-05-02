@@ -1,16 +1,14 @@
-import { auth } from "@/auth";
-import { togglePlanTaskCompletion, upsertDailyNote } from "@/app/actions/plan";
+import { requireAuth } from "@/lib/auth/require-auth";
+import { toggleTaskCompletionForm } from "@/app/actions/tasks";
+import { upsertJournalEntryForm } from "@/app/actions/journal";
 import { ActivityHeatmapLoader } from "@/components/ActivityHeatmapLoader";
 import { PlanTag } from "@/components/plan/PlanTag";
 import { addDaysISO, todayISO } from "@/lib/dates";
-import {
-  ensureSeededPlanForUser,
-  generateTasksFromTemplates,
-} from "@/lib/plan/service";
 import { aggregatesForHeatmap } from "@/lib/stats";
+import { listTasksForDate, getCompletionsForDate } from "@/lib/tasks";
+import { getJournalEntry } from "@/lib/journal";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
-import { extractGoalMentionsFromNote } from "@/lib/plan/note-tags";
 
 export const dynamic = "force-dynamic";
 
@@ -24,23 +22,25 @@ export default async function CalendarPage({
 }: {
   searchParams: Promise<{ date?: string }>;
 }) {
+  const userId = await requireAuth();
+
   const sp = await searchParams;
   const date = validDate(sp.date);
   const prev = addDaysISO(date, -1);
   const next = addDaysISO(date, 1);
-  const session = await auth();
-  const plan = await ensureSeededPlanForUser(session?.user?.id);
-  await generateTasksFromTemplates(plan.id, addDaysISO(todayISO(), -45), addDaysISO(todayISO(), 30));
 
-  const [heatmapData, dayTasks, note] = await Promise.all([
-    aggregatesForHeatmap(365),
-    prisma.planTask.findMany({
-      where: { planId: plan.id, date },
-      orderBy: { createdAt: "asc" },
+  const [heatmapData, dayTasks, completedIds, journalEntry] = await Promise.all([
+    aggregatesForHeatmap(userId, 365),
+    listTasksForDate(userId, date),
+    getCompletionsForDate(userId, date),
+    getJournalEntry(userId, date),
+    // ensure UserSettings row exists (no-op on repeated visits)
+    prisma.userSettings.upsert({
+      where: { userId },
+      create: { userId },
+      update: {},
     }),
-    prisma.dailyNote.findUnique({ where: { planId_date: { planId: plan.id, date } } }),
   ]);
-  const noteMentions = extractGoalMentionsFromNote(note?.content ?? "");
 
   return (
     <main>
@@ -50,8 +50,8 @@ export default async function CalendarPage({
       <h2 className="mt-2 text-2xl font-bold tracking-tight text-text">
         Heatmap + day details
       </h2>
-      <p className="mt-2 text-sm text-muted2">
-        Visualize completion trends and capture daily notes.
+      <p className="mt-2 text-sm text-muted2 ">
+        Visualize activity trends and capture daily journal entries.
       </p>
 
       <div className="mt-6">
@@ -59,7 +59,7 @@ export default async function CalendarPage({
       </div>
 
       <section className="mt-6 rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-center gap-2 font-mono text-[11px] text-muted2">
+        <div className="flex items-center gap-2 font-mono text-[11px] text-muted2 ">
           <Link href={`/calendar?date=${prev}`}>← Prev</Link>
           <form method="get" action="/calendar">
             <input type="date" name="date" defaultValue={date} />
@@ -67,71 +67,86 @@ export default async function CalendarPage({
           <Link href={`/calendar?date=${next}`}>Next →</Link>
         </div>
 
-        <h3 className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+        <h3 className="mt-3 font-mono text-[10px] uppercase tracking-widest text-muted2 ">
           {date}
         </h3>
+
+        {/* Tasks for the day */}
         <ul className="mt-3 flex flex-col gap-2">
           {dayTasks.length === 0 ? (
-            <li className="text-sm text-muted2">No tasks for this day.</li>
+            <li className="text-sm text-muted2 ">No tasks for this day.</li>
           ) : (
-            dayTasks.map((task) => (
-              <li key={task.id} className="rounded-lg border border-border p-2">
-                <div className="mb-1 flex items-center justify-between">
-                  <PlanTag category={task.category} />
-                  <form action={togglePlanTaskCompletion.bind(null, task.id)}>
-                    <button
-                      type="submit"
-                      className={`h-5 w-5 rounded border-2 ${
-                        task.completed
-                          ? "border-purple bg-purple/30"
-                          : "border-border2"
-                      }`}
-                    />
-                  </form>
-                </div>
-                <p className={task.completed ? "text-sm line-through text-muted" : "text-sm text-text"}>
-                  {task.title}
-                </p>
-                {task.detail ? (
-                  <p className="mt-1 text-xs text-muted2">{task.detail}</p>
-                ) : null}
-              </li>
-            ))
+            dayTasks.map((task) => {
+              const done = task.isRecurring
+                ? completedIds.has(task.id)
+                : task.completed;
+              return (
+                <li key={task.id} className="rounded-lg border border-border p-2">
+                  <div className="mb-1 flex items-center justify-between">
+                    <div className="flex flex-wrap gap-1">
+                      {task.taskTags.map((tt) => (
+                        <PlanTag key={tt.categoryId} category={tt.category.name} />
+                      ))}
+                    </div>
+                    <form
+                      action={toggleTaskCompletionForm.bind(null, task.id, date)}
+                    >
+                      <button
+                        type="submit"
+                        className={`h-5 w-5 rounded border-2 ${
+                          done ? "border-purple bg-purple/30" : "border-border2"
+                        }`}
+                      />
+                    </form>
+                  </div>
+                  <p
+                    className={
+                      done ? "text-sm line-through text-muted2 " : "text-sm text-text"
+                    }
+                  >
+                    {task.title}
+                  </p>
+                  {task.notes && (
+                    <p className="mt-1 text-xs text-muted2 ">{task.notes}</p>
+                  )}
+                </li>
+              );
+            })
           )}
         </ul>
 
-        <form action={upsertDailyNote} className="mt-4">
-          <input type="hidden" name="planId" value={plan.id} />
+        {/* Journal entry */}
+        <form action={upsertJournalEntryForm} className="mt-4">
           <input type="hidden" name="date" value={date} />
-          <label className="block font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-            Daily note
+          <label className="block font-mono text-[10px] uppercase tracking-widest text-muted2 ">
+            Journal
           </label>
-          <p className="mt-1 text-xs text-muted2">
-            Use goal hashtags: #dsa #java #design #devops #review
+          <p className="mt-1 text-xs text-muted2 ">
+            Use #hashtags to tag categories: #dsa #java #design #devops #review
           </p>
           <textarea
             name="content"
-            defaultValue={note?.content ?? ""}
+            defaultValue={journalEntry?.content ?? ""}
             rows={4}
             className="mt-2 w-full"
             placeholder="What did you work on today?"
           />
           <button
             type="submit"
-            className="mt-2 rounded border border-border2 px-3 py-2 font-mono text-[11px] uppercase text-muted2 hover:border-purple hover:text-purple"
+            className="mt-2 rounded border border-border2 px-3 py-2 font-mono text-[11px] uppercase text-muted2  hover:border-purple hover:text-purple"
           >
-            Save note
+            Save journal
           </button>
         </form>
-        {noteMentions.length > 0 ? (
+
+        {journalEntry && journalEntry.tags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {noteMentions.map((tag) => (
-              <PlanTag key={tag} category={tag} />
+            {journalEntry.tags.map((t) => (
+              <PlanTag key={t.categoryId} category={t.category.name} />
             ))}
           </div>
-        ) : null}
+        )}
       </section>
     </main>
   );
 }
-

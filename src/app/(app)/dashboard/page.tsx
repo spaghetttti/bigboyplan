@@ -1,14 +1,10 @@
 import Link from "next/link";
-import { auth } from "@/auth";
+import { requireAuth } from "@/lib/auth/require-auth";
 import { DashboardChartsLoader } from "@/components/DashboardChartsLoader";
 import { SummaryGrid } from "@/components/SummaryGrid";
 import { ActivityHeatmapLoader } from "@/components/ActivityHeatmapLoader";
 import { CheckInButton } from "@/components/CheckInButton";
-import {
-  SETTING_LAST_GH_ERROR,
-  SETTING_LAST_GH_SYNC,
-  getSetting,
-} from "@/lib/settings";
+import { getUserSettings } from "@/lib/settings";
 import {
   aggregatesForLastDays,
   aggregatesForHeatmap,
@@ -18,19 +14,18 @@ import {
   weekTaskCompletionCount,
 } from "@/lib/stats";
 import { todayISO } from "@/lib/dates";
-import {
-  ensureSeededPlanForUser,
-  planProgressSummary,
-} from "@/lib/plan/service";
+import { isoWeekFor, listWeeklyGoals } from "@/lib/weekly-goals";
 import { prisma } from "@/lib/db";
+import { tagClassForCategory } from "@/lib/tags";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  const userId = await requireAuth();
+
   const today = todayISO();
-  const session = await auth();
-  const plan = await ensureSeededPlanForUser(session?.user?.id);
-  const monthPrefix = today.slice(0, 7); // "YYYY-MM"
+  const { weekNumber, year } = isoWeekFor(today);
+  const monthPrefix = today.slice(0, 7);
 
   const [
     streak,
@@ -38,44 +33,26 @@ export default async function DashboardPage() {
     leet7,
     gh7,
     series,
-    lastSync,
-    syncErr,
-    progress,
-    phases,
-    constraints,
+    settings,
     monthCheckIns,
     todayCheckIn,
     heatmapData,
+    weeklyGoals,
   ] = await Promise.all([
-    computeActivityStreak(today),
-    weekTaskCompletionCount(today),
-    sumLeetcodeLastDays(7),
-    sumGithubLastDays(7),
-    aggregatesForLastDays(30),
-    getSetting(SETTING_LAST_GH_SYNC),
-    getSetting(SETTING_LAST_GH_ERROR),
-    planProgressSummary(plan.id),
-    prisma.planPhase.findMany({
-      where: { planId: plan.id },
-      orderBy: { sortOrder: "asc" },
-    }),
-    prisma.planConstraint.findFirst({
-      where: { planId: plan.id },
-    }),
+    computeActivityStreak(userId, today),
+    weekTaskCompletionCount(userId, today),
+    sumLeetcodeLastDays(userId, 7),
+    sumGithubLastDays(userId, 7),
+    aggregatesForLastDays(userId, 30),
+    getUserSettings(userId),
     prisma.dailyCheckIn.findMany({
-      where: { date: { startsWith: monthPrefix } },
+      where: { userId, date: { startsWith: monthPrefix } },
       select: { date: true },
     }),
-    prisma.dailyCheckIn.findUnique({ where: { date: today } }),
-    aggregatesForHeatmap(365),
+    prisma.dailyCheckIn.findUnique({ where: { userId_date: { userId, date: today } } }),
+    aggregatesForHeatmap(userId, 365),
+    listWeeklyGoals(userId, weekNumber, year),
   ]);
-
-  const syncLabel = lastSync
-    ? new Date(lastSync).toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "Never";
 
   return (
     <main>
@@ -86,11 +63,11 @@ export default async function DashboardPage() {
         Dashboard
       </h2>
       <div className="flex gap-2 justify-between">
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted2">
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted2 ">
           Streaks and weekly totals combine daily tasks, LeetCode logs, and
           GitHub activity (after you sync in Settings).
         </p>
-        <div className="py-12">
+        <div className="py-4">
           <CheckInButton isCheckedIn={!!todayCheckIn} />
         </div>
       </div>
@@ -100,79 +77,80 @@ export default async function DashboardPage() {
           { label: "Day streak", value: String(streak) },
           { label: "Task check-ins (week)", value: String(weekTasks) },
           { label: "LeetCode (7d)", value: String(leet7) },
-          { label: "Hybrid score", value: `${progress.hybridScore}%` },
+          { label: "GitHub commits (7d)", value: String(gh7) },
         ]}
       />
 
-      <CheckInButton isCheckedIn={!!todayCheckIn} />
-
+      {/* Activity heatmap */}
       <section className="mt-6 rounded-xl border border-border bg-surface p-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-muted2 ">
           Activity (last 365 days)
         </p>
         <div className="mt-3 overflow-x-auto">
           <ActivityHeatmapLoader data={heatmapData} />
         </div>
-        <p className="mt-3 font-mono text-[10px] text-muted2">
+        <p className="mt-3 font-mono text-[10px] text-muted2 ">
           {monthCheckIns.length} day{monthCheckIns.length !== 1 ? "s" : ""} checked in this month
         </p>
       </section>
 
-      <section className="mt-6 rounded-xl border border-border bg-surface p-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-          Plan constraints
-        </p>
-        <p className="mt-2 text-sm text-muted2">
-          {constraints?.minHoursPerWeek ?? 13}-
-          {constraints?.maxHoursPerWeek ?? 18}
-          h/week ·{" "}
-          {constraints?.hasFullTimeJob
-            ? "Full-time job"
-            : "No full-time job"} ·{" "}
-          {constraints?.eveningsWeekends
-            ? "Evenings + weekends"
-            : "Flexible schedule"}
-        </p>
-      </section>
+      {/* Weekly goals */}
+      {weeklyGoals.length > 0 && (
+        <section className="mt-6 rounded-xl border border-border bg-surface p-4">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted2 ">
+            This week&apos;s goals
+          </p>
+          <ul className="mt-3 flex flex-col gap-3">
+            {weeklyGoals.map((g) => {
+              const pct =
+                g.targetValue > 0
+                  ? Math.min(100, Math.round((g.actualValue / g.targetValue) * 100))
+                  : 0;
+              return (
+                <li key={g.id} className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {g.category && (
+                        <span
+                          className={`inline-block rounded border px-2 py-0.5 font-mono text-[10px] uppercase ${tagClassForCategory(g.category.name)}`}
+                        >
+                          {g.category.name}
+                        </span>
+                      )}
+                      <span className="text-sm text-text">{g.title}</span>
+                    </div>
+                    <span className="font-mono text-[10px] text-muted2  shrink-0">
+                      {g.actualValue}/{g.targetValue} {g.metricUnit}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-surface2">
+                    <div
+                      className="h-full rounded-full bg-purple transition-all"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <Link href="/goals" className="mt-3 inline-block font-mono text-[11px] text-purple hover:underline">
+            Manage goals →
+          </Link>
+        </section>
+      )}
 
-      <section className="mt-6 rounded-xl border border-border bg-surface p-4">
-        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
-          Month timeline
-        </p>
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {phases.map((phase) => (
-            <div
-              key={phase.id}
-              className="rounded border border-border px-3 py-2"
-            >
-              <p className="font-mono text-[10px] text-muted">
-                Month {String(phase.monthNumber).padStart(2, "0")}
-              </p>
-              <p className="text-sm text-text">{phase.title}</p>
-              <p className="text-xs text-muted2">{phase.focus}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <div className="mt-6 flex flex-wrap gap-3 text-sm text-muted2">
-        <span className="font-mono text-[11px] text-muted">
-          Last GitHub sync: {syncLabel}
-        </span>
-        {syncErr ? (
-          <span className="rounded border border-amber/40 bg-amber-dim px-2 py-0.5 text-amber">
-            {syncErr}
+      <div className="mt-6 flex flex-wrap gap-3 text-sm text-muted2 ">
+        {settings.githubUsername && (
+          <span className="font-mono text-[11px] text-muted2 ">
+            GitHub: {settings.githubUsername}
           </span>
-        ) : null}
-        <Link
-          href="/planner"
-          className="font-mono text-[11px] text-purple hover:underline"
-        >
+        )}
+        <Link href="/planner" className="font-mono text-[11px] text-purple hover:underline">
           Open planner →
         </Link>
-        <span className="font-mono text-[11px] text-muted">
-          GitHub activity (7d): {gh7}
-        </span>
+        <Link href="/settings" className="font-mono text-[11px] text-muted2  hover:underline">
+          Sync GitHub →
+        </Link>
       </div>
 
       <DashboardChartsLoader data={series} />

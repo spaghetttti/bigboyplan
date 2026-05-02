@@ -2,25 +2,29 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { requireAuth } from "@/lib/auth/require-auth";
 
-export async function upsertLeetcodeLog(date: string, count: number, notes?: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return { ok: false as const, error: "Invalid date" };
-  }
-  const c = Math.max(0, Math.floor(Number(count)) || 0);
-  await prisma.leetcodeLog.upsert({
-    where: { date },
-    create: { date, count: c, notes: notes?.trim() || null },
-    update: { count: c, notes: notes?.trim() || null },
-  });
-  revalidatePath("/today");
-  revalidatePath("/");
-  return { ok: true as const };
+function clampInt(raw: FormDataEntryValue | null | undefined): number {
+  return Math.max(0, Math.floor(Number(raw ?? 0)) || 0);
 }
 
 export async function upsertLeetcodeForm(formData: FormData) {
+  const userId = await requireAuth();
   const date = String(formData.get("date") ?? "");
-  const count = Number(formData.get("count") ?? 0);
-  const notes = String(formData.get("notes") ?? "");
-  await upsertLeetcodeLog(date, count, notes || undefined);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+
+  const easyCount = clampInt(formData.get("easyCount"));
+  const mediumCount = clampInt(formData.get("mediumCount"));
+  const hardCount = clampInt(formData.get("hardCount"));
+  const notesRaw = String(formData.get("notes") ?? "").trim();
+  const notes = notesRaw || null;
+
+  await prisma.leetcodeLog.upsert({
+    where: { userId_date: { userId, date } },
+    create: { userId, date, easyCount, mediumCount, hardCount, notes },
+    update: { easyCount, mediumCount, hardCount, notes },
+  });
+
+  revalidatePath("/today");
+  revalidatePath("/");
 }
