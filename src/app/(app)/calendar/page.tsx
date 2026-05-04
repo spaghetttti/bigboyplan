@@ -1,7 +1,7 @@
 import { requireAuth } from "@/lib/auth/require-auth";
 import { toggleTaskCompletionForm } from "@/app/actions/tasks";
-import { upsertJournalEntryForm } from "@/app/actions/journal";
 import { ActivityHeatmapLoader } from "@/components/ActivityHeatmapLoader";
+import { JournalForm } from "@/components/forms/JournalForm";
 import { PlanTag } from "@/components/plan/PlanTag";
 import { addDaysISO, todayISO } from "@/lib/dates";
 import { aggregatesForHeatmap } from "@/lib/stats";
@@ -116,28 +116,15 @@ export default async function CalendarPage({
         </ul>
 
         {/* Journal entry */}
-        <form action={upsertJournalEntryForm} className="mt-4">
-          <input type="hidden" name="date" value={date} />
+        <div className="mt-4">
           <label className="block font-mono text-[10px] uppercase tracking-widest text-muted2 ">
             Journal
           </label>
           <p className="mt-1 text-xs text-muted2 ">
             Use #hashtags to tag categories: #dsa #java #design #devops #review
           </p>
-          <textarea
-            name="content"
-            defaultValue={journalEntry?.content ?? ""}
-            rows={4}
-            className="mt-2 w-full"
-            placeholder="What did you work on today?"
-          />
-          <button
-            type="submit"
-            className="mt-2 rounded border border-border2 px-3 py-2 font-mono text-[11px] uppercase text-muted2  hover:border-purple hover:text-purple"
-          >
-            Save journal
-          </button>
-        </form>
+          <JournalForm date={date} defaultContent={journalEntry?.content} />
+        </div>
 
         {journalEntry && journalEntry.tags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">

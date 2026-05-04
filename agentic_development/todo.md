@@ -7,6 +7,7 @@
   - task creation
   - log save
   - daily note save
+  - other actions that save smth on db level
 - [ ] Keep error messaging distinct from success messaging.
 
 

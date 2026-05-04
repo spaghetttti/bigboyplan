@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { toggleTaskCompletionForm } from "@/app/actions/tasks";
-import { upsertLeetcodeForm } from "@/app/actions/leetcode";
-import { upsertJournalEntryForm } from "@/app/actions/journal";
 import { prisma } from "@/lib/db";
+import { JournalForm } from "@/components/forms/JournalForm";
+import { LeetcodeForm } from "@/components/forms/LeetcodeForm";
 import { addDaysISO, todayISO } from "@/lib/dates";
 import { listTasksForDate, getCompletionsForDate } from "@/lib/tasks";
 import { isoWeekFor, listWeeklyGoals } from "@/lib/weekly-goals";
@@ -196,22 +196,7 @@ export default async function TodayPage({
         <p className="mt-1 text-xs text-muted2 ">
           Use #hashtags to tag categories: #dsa #java #design #devops #review
         </p>
-        <form action={upsertJournalEntryForm} className="mt-3">
-          <input type="hidden" name="date" value={date} />
-          <textarea
-            name="content"
-            rows={3}
-            className="w-full"
-            placeholder="What did you work on today?"
-            defaultValue={journalEntry?.content ?? ""}
-          />
-          <button
-            type="submit"
-            className="mt-2 rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2  transition-colors hover:border-purple hover:text-purple"
-          >
-            Save journal
-          </button>
-        </form>
+        <JournalForm date={date} defaultContent={journalEntry?.content} />
         {journalEntry && journalEntry.tags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {journalEntry.tags.map((t) => (
@@ -226,57 +211,13 @@ export default async function TodayPage({
         <h3 className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted2 ">
           LeetCode (manual)
         </h3>
-        <form
-          action={upsertLeetcodeForm}
-          className="mt-4 grid gap-3 sm:grid-cols-4 sm:items-end"
-        >
-          <input type="hidden" name="date" value={date} />
-          <label className="flex flex-col gap-1 text-xs text-muted2 ">
-            Easy
-            <input
-              type="number"
-              name="easyCount"
-              min={0}
-              defaultValue={leet?.easyCount ?? 0}
-              className="w-full"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted2 ">
-            Medium
-            <input
-              type="number"
-              name="mediumCount"
-              min={0}
-              defaultValue={leet?.mediumCount ?? 0}
-              className="w-full"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted2 ">
-            Hard
-            <input
-              type="number"
-              name="hardCount"
-              min={0}
-              defaultValue={leet?.hardCount ?? 0}
-              className="w-full"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-muted2  sm:col-span-4">
-            Notes
-            <input
-              type="text"
-              name="notes"
-              placeholder="Optional"
-              defaultValue={leet?.notes ?? ""}
-            />
-          </label>
-          <button
-            type="submit"
-            className="rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2  transition-colors hover:border-purple hover:text-purple sm:col-span-4 sm:self-end"
-          >
-            Save log
-          </button>
-        </form>
+        <LeetcodeForm
+          date={date}
+          easyCount={leet?.easyCount}
+          mediumCount={leet?.mediumCount}
+          hardCount={leet?.hardCount}
+          notes={leet?.notes}
+        />
       </section>
 
       {/* Weekly goals sidebar */}
