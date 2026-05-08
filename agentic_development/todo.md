@@ -3,7 +3,7 @@
 
 - [ ] Make a small gender options for default name Big Boy Plan , a option in setting to make the title to Big Girl Plan or Big Person Plan for they them
 - [ ] Make on hover tooltip in gridview heatmap for each day what was done , Tasks, Leetcode, GithubActivity , Checkin
-- [ ] Add success notifications/toasts for:
+- [x] Add success notifications/toasts for:
   - task creation
   - log save
   - daily note save

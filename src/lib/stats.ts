@@ -10,6 +10,9 @@ import type { DayAggregate } from "@/lib/types";
 export type HeatmapDayMeta = {
   checkedIn: boolean;
   leetcode: number;
+  leetcodeEasy: number;
+  leetcodeMedium: number;
+  leetcodeHard: number;
   github: number;
   recurringCompletions: number;
   scheduledTasksDone: number;
@@ -157,7 +160,9 @@ export async function aggregatesForHeatmap(
     ]);
 
   const checkInSet = new Set(checkInRows.map((r) => r.date));
-  const leetMap = new Map(leetRows.map((r) => [r.date, leetTotal(r)]));
+  const leetMap = new Map(
+    leetRows.map((r) => [r.date, { total: leetTotal(r), easy: r.easyCount, medium: r.mediumCount, hard: r.hardCount }]),
+  );
   const ghMap = new Map(ghRows.map((r) => [r.date, r.commits]));
   const recurringMap = new Map(
     recurringCompletions.map((c) => [c.date, (c._count as { _all: number })._all]),
@@ -171,14 +176,14 @@ export async function aggregatesForHeatmap(
 
   return dates.map((date) => {
     const checkedIn = checkInSet.has(date);
-    const leetcode = leetMap.get(date) ?? 0;
+    const leet = leetMap.get(date) ?? { total: 0, easy: 0, medium: 0, hard: 0 };
     const github = ghMap.get(date) ?? 0;
     const recurringCompletions = recurringMap.get(date) ?? 0;
     const scheduledTasksDone = scheduledMap.get(date) ?? 0;
     const journaled = journaledSet.has(date);
     const count =
       (checkedIn ? 3 : 0) +
-      leetcode +
+      leet.total +
       github +
       recurringCompletions +
       scheduledTasksDone +
@@ -188,7 +193,10 @@ export async function aggregatesForHeatmap(
       count,
       meta: {
         checkedIn,
-        leetcode,
+        leetcode: leet.total,
+        leetcodeEasy: leet.easy,
+        leetcodeMedium: leet.medium,
+        leetcodeHard: leet.hard,
         github,
         recurringCompletions,
         scheduledTasksDone,
