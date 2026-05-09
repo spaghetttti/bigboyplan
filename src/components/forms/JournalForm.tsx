@@ -7,9 +7,10 @@ import { useToast } from '@/lib/toast-context';
 type Props = {
   date: string;
   defaultContent?: string;
+  exists?: boolean;
 };
 
-export function JournalForm({ date, defaultContent }: Props) {
+export function JournalForm({ date, defaultContent, exists = false }: Props) {
   const [isPending, startTransition] = useTransition();
   const { addToast } = useToast();
 
@@ -44,7 +45,7 @@ export function JournalForm({ date, defaultContent }: Props) {
         disabled={isPending}
         className="mt-2 rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2 transition-colors hover:border-purple hover:text-purple disabled:opacity-50 disabled:cursor-default"
       >
-        {isPending ? 'Saving…' : 'Save journal'}
+        {isPending ? (exists ? 'Updating…' : 'Saving…') : (exists ? 'Update journal' : 'Save journal')}
       </button>
     </form>
   );

@@ -107,6 +107,9 @@ export default async function CalendarPage({
 
         {/* Tasks for the day */}
         <ul className="mt-3 flex flex-col gap-2">
+        <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted2">
+              Today`s Tasks
+            </h3>
           {dayTasks.length === 0 ? (
             <li className="text-sm text-muted2">No tasks for this day.</li>
           ) : (
@@ -143,24 +146,6 @@ export default async function CalendarPage({
           )}
         </ul>
 
-        {/* Journal entry editor */}
-        <div className="mt-4">
-          <label className="block font-mono text-[10px] uppercase tracking-widest text-muted2">
-            Journal
-          </label>
-          <p className="mt-1 text-xs text-muted2">
-            Use #hashtags to tag categories: #dsa #java #design #devops #review
-          </p>
-          <JournalForm date={date} defaultContent={journalEntry?.content} />
-        </div>
-
-        {journalEntry && journalEntry.tags.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {journalEntry.tags.map((t) => (
-              <PlanTag key={t.categoryId} category={t.category.name} />
-            ))}
-          </div>
-        )}
       </section>
 
       {/* ── Journal History ── */}
@@ -196,7 +181,7 @@ export default async function CalendarPage({
               return (
                 <li
                   key={entry.id}
-                  className="rounded-lg border border-border p-6"
+                  className="rounded-lg border border-border p-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <Link
@@ -278,7 +263,7 @@ export default async function CalendarPage({
               return (
                 <li
                   key={log.id}
-                  className="rounded-lg border border-border p-6"
+                  className="rounded-lg border border-border p-3"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-[11px] text-purple">

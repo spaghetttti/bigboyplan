@@ -10,9 +10,10 @@ type Props = {
   mediumCount?: number;
   hardCount?: number;
   notes?: string | null;
+  exists?: boolean;
 };
 
-export function LeetcodeForm({ date, easyCount = 0, mediumCount = 0, hardCount = 0, notes }: Props) {
+export function LeetcodeForm({ date, easyCount = 0, mediumCount = 0, hardCount = 0, notes, exists = false }: Props) {
   const [isPending, startTransition] = useTransition();
   const { addToast } = useToast();
 
@@ -81,7 +82,7 @@ export function LeetcodeForm({ date, easyCount = 0, mediumCount = 0, hardCount =
         disabled={isPending}
         className="rounded-lg border border-border2 bg-surface2 px-4 py-2 font-mono text-[11px] uppercase tracking-wider text-muted2 transition-colors hover:border-purple hover:text-purple disabled:opacity-50 disabled:cursor-default"
       >
-        {isPending ? 'Saving…' : 'Save'}
+        {isPending ? (exists ? 'Updating…' : 'Saving…') : (exists ? 'Update' : 'Save')}
       </button>
     </form>
   );

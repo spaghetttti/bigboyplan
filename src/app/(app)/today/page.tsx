@@ -196,7 +196,7 @@ export default async function TodayPage({
         <p className="mt-1 text-xs text-muted2 ">
           Use #hashtags to tag categories: #dsa #java #design #devops #review
         </p>
-        <JournalForm date={date} defaultContent={journalEntry?.content} />
+        <JournalForm date={date} defaultContent={journalEntry?.content} exists={!!journalEntry} />
         {journalEntry && journalEntry.tags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {journalEntry.tags.map((t) => (
@@ -217,6 +217,7 @@ export default async function TodayPage({
           mediumCount={leet?.mediumCount}
           hardCount={leet?.hardCount}
           notes={leet?.notes}
+          exists={!!leet}
         />
       </section>
 
