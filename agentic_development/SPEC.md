@@ -1,6 +1,6 @@
-# DevTrack — MVP Specification
+# DevTrack — Specification
 > Personal learning & goal tracker for backend/DevSecOps interview prep
-> Version: 1.4 MVP | Last updated: 2026-04-30 session 3 (reflects actual built state)
+> Version: 2.0 | Last updated: 2026-05-08 (post schema rewrite)
 
 ---
 
@@ -10,655 +10,368 @@
 |---|---|
 | Framework | Next.js 16.2.2 (App Router, Turbopack) |
 | Language | TypeScript (strict) |
-| Styling | Tailwind CSS v4 — single `@import "tailwindcss"` in globals.css, no external CSS packages |
-| Database | PostgreSQL via Prisma ORM (local Docker dev; Neon Postgres in production ✅) |
+| Styling | Tailwind CSS v4 — single `@import "tailwindcss"` in globals.css |
+| Database | PostgreSQL via Prisma ORM (local Postgres dev; Neon Postgres production) |
 | Auth | NextAuth.js v5 beta — GitHub OAuth provider |
 | Charts | Recharts v3 |
-| Heatmaps | react-calendar-heatmap — single `ActivityHeatmap` component used on both `/dashboard` and `/calendar` |
-| Deployment | Vercel (target) |
-| Mobile | Fully responsive |
-| Mutations | Next.js Server Actions (not REST API routes) |
-| State | TanStack Query v5 (client), `force-dynamic` SSR for page data |
+| Heatmaps | react-calendar-heatmap — `ActivityHeatmap` component on `/dashboard` and `/calendar` |
+| Deployment | Vercel + Neon Postgres ✅ live |
+| Mutations | Next.js Server Actions (no REST API routes for data) |
+| State | TanStack Query v5 (client charts), `force-dynamic` SSR for page data |
 
 ---
 
 ## 1. Project Overview
 
-**DevTrack** is a personal progress tracker for a structured 4-month backend/DevSecOps interview prep plan. It aggregates activity from GitHub and manual LeetCode logs, combines it with daily plan tasks, daily check-ins, and notes, and surfaces everything as visualizations — streaks, heatmaps, charts, and goal progress.
+**DevTrack** is a personal progress tracker for structured interview prep. It aggregates GitHub activity and manual LeetCode logs, combines them with daily tasks, journal entries, weekly goals, and check-ins, and surfaces everything as streaks, heatmaps, charts, and goal progress.
 
-**Single-user, single-tenant.** This is not a SaaS product. Most data tables have no `userId` — they are global to the single running instance.
+**Multi-user.** Every table is scoped by `userId`. GitHub OAuth is the sole identity provider.
 
 ### Core loop
 1. Open the app daily
-2. Hit the campfire check-in button (records `DailyCheckIn`)
-3. Check off today's plan tasks (auto-generated from weekly templates)
-4. Log today's LeetCode count
-5. GitHub activity syncs via PAT-authenticated API call (Settings)
-6. Dashboard shows streak + charts + 365-day activity heatmap
-7. Goals track against the 4-phase plan with category tags
+2. Hit the campfire check-in button
+3. Check off recurring checklist tasks
+4. Check off scheduled tasks from the planner
+5. Log LeetCode problems (easy / medium / hard counts + notes)
+6. Write a journal entry (supports #hashtags for category tagging)
+7. Track weekly goals with target values and progress
+8. Sync GitHub contributions from Settings
 
 ---
 
 ## 2. Information Architecture
 
 ```
-/                        → redirect to /dashboard if logged in, else /login
-/login                   → GitHub OAuth login page
-/dashboard               → main daily view (streak, summary, 365-day heatmap, charts)
-/planner                 → weekly board view (plan tasks by day + category)
-/today                   → daily checklist (recurring tasks + plan tasks + LC log)
-/calendar                → 365-day activity heatmap + day detail panel + daily note editor
-/goals                   → goal list with category tags
-/settings                → GitHub PAT, sync trigger, plan constraints, plan bootstrap
+/                 → redirect to /dashboard
+/login            → GitHub OAuth
+/dashboard        → streak, summary grid, heatmap, weekly goals, combined chart
+/planner          → 7-column weekly task board + add-task form
+/today            → recurring checklist, scheduled tasks, journal, LeetCode log, weekly goals
+/goals            → WeeklyGoal CRUD with progress bars
+/calendar         → 365-day heatmap + day detail (tasks + journal)
+/settings         → UserSettings (usernames, token, timezone), categories, plan bootstrap
 ```
 
 ---
 
-## 3. Database Schema (Prisma / PostgreSQL)
-
-### Date storage convention
-All fields representing a calendar date (with no time component) are stored as `String` in `"YYYY-MM-DD"` format. This avoids timezone edge cases — PostgreSQL `DateTime` stores UTC, which shifts dates when queried from non-UTC timezones. Timestamp fields (`createdAt`, `updatedAt`, `checkedAt`) remain proper `DateTime`.
+## 3. Database Schema
 
 ### 3.1 `User`
 ```prisma
-id               String   @id @default(uuid())
-githubId         String   @unique @map("github_id")
-githubLogin      String   @map("github_login")
-email            String?
-avatarUrl        String?  @map("avatar_url")
-leetcodeUsername String?  @map("leetcode_username")
-githubUsername   String?  @map("github_username")
-createdAt        DateTime @default(now()) @map("created_at")
-plans            Plan[]
-
-@@map("users")
+id          String   @id @default(cuid())
+githubId    String   @unique
+githubLogin String
+email       String?
+avatarUrl   String?
+createdAt   DateTime @default(now())
 ```
 
-### 3.2 `Setting` — global key-value store
+### 3.2 `UserSettings` — 1:1 with User
 ```prisma
-key   String @id
-value String
+id                 String    @id @default(cuid())
+userId             String    @unique
+leetcodeUsername   String?
+githubUsername     String?
+githubToken        String?
+timezone           String    @default("UTC")
+updatedAt          DateTime  @updatedAt
 ```
-Keys in use: `github_pat`, `github_last_sync`, `github_last_error`.
+Created on first login. Accessed via `getUserSettings(userId)`.
 
-### 3.3 `Category` — user-managed category list
+### 3.3 `Category`
 ```prisma
 id        String  @id @default(cuid())
-name      String  @unique       -- uppercase: "DSA", "JAVA", "RUST", etc.
-color     String  @default("#6b6966")  -- hex, maps to design-system token
+userId    String
+name      String                        -- uppercase: "DSA", "JAVA", etc.
+color     String  @default("#a78bfa")   -- hex
 sortOrder Int     @default(0)
-isSystem  Boolean @default(false)  -- true = seeded default, protected from delete
+isSystem  Boolean @default(false)       -- system rows protected from delete
 
-@@map("categories")
+@@unique([userId, name])
 ```
-Seeded defaults (isSystem = true): `DSA`, `JAVA`, `DESIGN`, `DEVOPS`, `REVIEW`, `MOCK`, `OTHER`.
-Users can add custom categories and change colors for any category from the Settings page.
-`PlanCategory` Prisma enum was removed — all category fields are now plain `String`.
+7 system defaults seeded on first login: `DSA`, `JAVA`, `DESIGN`, `DEVOPS`, `REVIEW`, `MOCK`, `OTHER`.
 
-### 3.4 `Goal`
+### 3.4 `Plan`
 ```prisma
-id         String    @id @default(cuid())
-title      String
-category   String    @default("OTHER")   -- references Category.name by value (no FK)
-phase      String?
-targetDate DateTime?
-sortOrder  Int       @default(0)
-createdAt  DateTime  @default(now())
+id          String   @id @default(cuid())
+userId      String
+title       String
+description String?
+startDate   String   -- "YYYY-MM-DD"
+endDate     String   -- "YYYY-MM-DD"
+isActive    Boolean  @default(true)
+isArchived  Boolean  @default(false)
+createdAt   DateTime @default(now())
 ```
+Thin umbrella — no phases, templates, or constraints. One active plan per user.
 
-### 3.5 `DailyTask` — recurring checklist items (independent of plan)
+### 3.5 `WeeklyGoal`
 ```prisma
 id          String           @id @default(cuid())
+userId      String
+planId      String?
+categoryId  String?
+weekNumber  Int               -- ISO week number (1-53)
+year        Int
 title       String
-sortOrder   Int              @default(0)
-archived    Boolean          @default(false)
+description String?
+targetValue Float
+metricUnit  String
+actualValue Float            @default(0)
+status      WeeklyGoalStatus @default(PENDING)
 createdAt   DateTime         @default(now())
+
+enum WeeklyGoalStatus { PENDING IN_PROGRESS COMPLETED MISSED }
+```
+
+### 3.6 `Task`
+```prisma
+id          String    @id @default(cuid())
+userId      String
+title       String
+notes       String?
+completed   Boolean   @default(false)
+isRecurring Boolean   @default(false)
+dueDate     String?   -- "YYYY-MM-DD"; null for recurring
+completedAt DateTime?
+createdAt   DateTime  @default(now())
+taskTags    TaskTag[]
 completions TaskCompletion[]
 ```
 
-### 3.6 `TaskCompletion`
+- `isRecurring = true`: daily checklist item. Per-day completion via `TaskCompletion`.
+- `isRecurring = false`: scheduled task with `dueDate`. Completion via `Task.completed`.
+
+### 3.7 `TaskTag` — M:N junction
 ```prisma
-id     String    @id @default(cuid())
+taskId     String
+categoryId String
+
+@@id([taskId, categoryId])
+```
+
+### 3.8 `TaskCompletion`
+```prisma
+id     String @id @default(cuid())
 taskId String
-date   String    -- "YYYY-MM-DD"
-task   DailyTask @relation(...)
+date   String -- "YYYY-MM-DD"
 
 @@unique([taskId, date])
-@@index([date])
 ```
 
-### 3.7 `LeetcodeLog`
+### 3.9 `JournalEntry`
 ```prisma
-id    String  @id @default(cuid())
-date  String  @unique   -- "YYYY-MM-DD"
-count Int
-notes String?
-```
+id             String       @id @default(cuid())
+userId         String
+date           String        -- "YYYY-MM-DD"
+content        String
+notionSyncedAt DateTime?     -- null = not synced; reset when content changes
+createdAt      DateTime      @default(now())
+updatedAt      DateTime      @updatedAt
+tags           JournalTag[]
 
-### 3.8 `GithubDailyStat`
+@@unique([userId, date])
+```
+#hashtags in content are parsed on save → `JournalTag` rows created.
+
+### 3.10 `JournalTag` — M:N junction
 ```prisma
-id          String   @id @default(cuid())
-date        String   @unique   -- "YYYY-MM-DD"
-commitCount Int
-updatedAt   DateTime @updatedAt
+journalId  String
+categoryId String
+
+@@id([journalId, categoryId])
 ```
 
-### 3.9 `DailyCheckIn` — campfire daily check-in
+### 3.11 `LeetcodeLog`
+```prisma
+id          String  @id @default(cuid())
+userId      String
+date        String  -- "YYYY-MM-DD"
+easyCount   Int     @default(0)
+mediumCount Int     @default(0)
+hardCount   Int     @default(0)
+notes       String?
+
+@@unique([userId, date])
+```
+
+### 3.12 `GithubDailyStat`
 ```prisma
 id        String   @id @default(cuid())
-date      String   @unique   -- "YYYY-MM-DD"
+userId    String
+date      String   -- "YYYY-MM-DD"
+commits   Int      @default(0)
+prs       Int      @default(0)
+reviews   Int      @default(0)
+updatedAt DateTime @updatedAt
+
+@@unique([userId, date])
+```
+
+### 3.13 `DailyCheckIn`
+```prisma
+id        String   @id @default(cuid())
+userId    String
+date      String   -- "YYYY-MM-DD"
 checkedAt DateTime @default(now())
 
-@@index([date])
-```
-One row per calendar day. Upserted by `checkInToday()` server action. Powers the campfire animation on the dashboard and contributes +3 to the activity score.
-
-### 3.10 `Plan` ← primary aggregate root
-```prisma
-id          String           @id @default(cuid())
-userId      String?          -- nullable; plan can exist without a User row
-title       String
-description String?
-startDate   String           -- "YYYY-MM-DD"
-endDate     String           -- "YYYY-MM-DD"
-isActive    Boolean          @default(true)
-createdAt   DateTime         @default(now())
-updatedAt   DateTime         @updatedAt
-user        User?            @relation(...)
-constraints PlanConstraint[]
-phases      PlanPhase[]
-milestones  PlanMilestone[]
-templates   WeeklyTemplate[]
-tasks       PlanTask[]
-notes       DailyNote[]
-
-@@index([userId])
+@@unique([userId, date])
 ```
 
-### 3.11 `PlanConstraint`
-```prisma
-id               String  @id @default(cuid())
-planId           String
-minHoursPerWeek  Int?
-maxHoursPerWeek  Int?
-hasFullTimeJob   Boolean @default(false)
-eveningsWeekends Boolean @default(false)
-note             String?
-plan             Plan    @relation(...)
-
-@@index([planId])
-```
-
-### 3.12 `PlanPhase`
+### 3.14 `WeeklyReport`
 ```prisma
 id          String   @id @default(cuid())
-planId      String
-monthNumber Int      -- 1-4
-title       String
-focus       String
-weekStart   Int
-weekEnd     Int
-sortOrder   Int
-createdAt   DateTime @default(now())
-plan        Plan     @relation(...)
-milestones  PlanMilestone[]
-templates   WeeklyTemplate[]
-tasks       PlanTask[]
-
-@@index([planId, sortOrder])
+userId      String
+planId      String?
+weekNumber  Int
+year        Int
+snapshot    Json
+generatedAt DateTime @default(now())
 ```
-Phases: Month 1 Foundation → Month 2 Build → Month 3 Depth → Month 4 Fire.
-
-### 3.13 `PlanMilestone`
-```prisma
-id          String     @id @default(cuid())
-planId      String
-phaseId     String?
-label       String
-value       String
-isCompleted Boolean    @default(false)
-sortOrder   Int        @default(0)
-plan        Plan       @relation(...)
-phase       PlanPhase? @relation(...)
-
-@@index([planId, sortOrder])
-@@index([phaseId])
-```
-
-### 3.14 `WeeklyTemplate` ← recurring task blueprint
-```prisma
-id             String     @id @default(cuid())
-planId         String
-phaseId        String?
-weekday        Int        -- 0=Sun … 6=Sat
-title          String
-detail         String?
-category       String     -- references Category.name by value (no FK)
-estimatedHours Float?
-isActive       Boolean    @default(true)
-sortOrder      Int        @default(0)
-plan           Plan       @relation(...)
-phase          PlanPhase? @relation(...)
-tasks          PlanTask[]
-
-@@index([planId, weekday, sortOrder])
-@@index([phaseId])
-```
-
-### 3.15 `PlanTask` ← daily task instances
-```prisma
-id             String          @id @default(cuid())
-planId         String
-phaseId        String?
-templateId     String?
-date           String          -- "YYYY-MM-DD"
-title          String
-detail         String?
-category       String          -- references Category.name by value (no FK)
-estimatedHours Float?
-completed      Boolean         @default(false)
-source         PlanTaskSource  @default(MANUAL)
-createdAt      DateTime        @default(now())
-updatedAt      DateTime        @updatedAt
-plan           Plan            @relation(...)
-phase          PlanPhase?      @relation(...)
-template       WeeklyTemplate? @relation(...)
-
-@@index([planId, date])
-@@index([phaseId])
-@@index([templateId])
-```
-
-### 3.16 `DailyNote`
-```prisma
-id        String   @id @default(cuid())
-planId    String
-date      String   -- "YYYY-MM-DD"
-content   String
-createdAt DateTime @default(now())
-updatedAt DateTime @updatedAt
-plan      Plan     @relation(...)
-
-@@unique([planId, date])
-@@index([planId, date])
-```
-Hashtags (`#dsa`, `#java`, `#design`, `#devops`, `#review`) are extracted at read time via `extractGoalMentionsFromNote()` and displayed as category pills.
-
-### Enum
-```prisma
-enum PlanTaskSource { TEMPLATE MANUAL }
-```
-`PlanCategory` was removed. Categories are now stored in the `Category` table.
+Table exists; no UI or generation logic yet.
 
 ---
 
 ## 4. Authentication
 
-- **Provider:** GitHub OAuth via NextAuth.js v5 (beta)
-- **Config split:** `src/auth.config.ts` (provider config, edge-safe) + `src/auth.ts` (full callbacks with Prisma, Node.js only)
-- On first login: upsert `User` row using GitHub profile data; optionally mirror to Supabase `public.users` (swallowed on error)
-- Session shape: `{ user: { id: string, name: string, email: string, image: string } }`
-- `session.user.id` = Postgres `User.id` UUID — used as auth boundary in user-scoped Server Actions
-- Middleware: protects all routes except `/login` and `/api/auth/*`
-- Session token stored in HTTP-only cookie (JWT strategy)
+- **Provider:** GitHub OAuth via NextAuth.js v5
+- **Auth boundary:** `requireAuth()` in `lib/auth/require-auth.ts` — used by every page and server action. Returns `userId` string, redirects to `/login` if not authenticated.
+- **On first login:** creates `User`, `UserSettings`, and seeds 7 system `Category` rows.
+- **Session:** JWT in HTTP-only cookie. `session.user.id` = Postgres `User.id`.
+- **Middleware:** edge-safe `auth.config.ts`; protects all routes except `/login` and `/api/auth/*`.
 
 ---
 
 ## 5. External Integrations
 
-### 5.1 GitHub Integration ✅ Built
-- **API:** GitHub GraphQL API (`https://api.github.com/graphql`)
-- **Auth:** Personal Access Token (PAT) stored in `Setting` table (`github_pat`)
-- **Query:** Contribution calendar for last 364 days
-- **Storage:** Upserts into `GithubDailyStat` per date (ISO string)
-- **Trigger:** Settings page "Sync GitHub now" → `runGithubSync()` Server Action
-- **Incremental sync:** first run fetches full 364 days; subsequent runs fetch only `(days since last sync) + 7` days — historical rows are never overwritten
-- **Status tracking:** `github_last_sync` + `github_last_error` in `Setting` table
+### 5.1 GitHub ✅
+- **Token:** stored in `UserSettings.githubToken` (set via Settings form)
+- **Sync:** `syncGithubContributions(userId)` → GitHub GraphQL contributionsCollection → upserts `GithubDailyStat` (fills `commits` only; `prs`/`reviews` default to 0)
+- **Trigger:** manual "Sync GitHub" button in `/settings`
 
-### 5.2 LeetCode Integration ⚠️ Manual only
-- **Current:** Manual daily entry form on `/today` → `upsertLeetcodeLog()` Server Action
-- **Storage:** `LeetcodeLog` table (date + count + notes)
-- **Future:** Unofficial GraphQL endpoint — planned but not implemented
+### 5.2 LeetCode ⚠️ Manual only
+- User enters easy/medium/hard counts + notes on `/today`
+- Stored as `LeetcodeLog` row per (userId, date)
 
----
+### 5.3 Google Calendar 📋 Planned
+- See `agentic_development/google-calendar-notion-plan.md`
 
-## 6. Server Actions
-
-All mutations use Next.js Server Actions in `src/app/actions/`:
-
-### `plan.ts`
-| Action | Description |
-|---|---|
-| `generateCurrentWeekTasksAction()` | Generate `PlanTask` rows from `WeeklyTemplate` for current week |
-| `togglePlanTaskCompletion(taskId)` | Toggle task done/undone |
-| `addManualPlanTask(formData)` | Create one-off `PlanTask` |
-| `updatePlanTask(formData)` | Edit task (date, title, category, hours) |
-| `updatePlanConstraints(formData)` | Save plan hour/schedule constraints |
-| `upsertDailyNote(formData)` | Save note for a (planId, date) pair |
-
-### `tasks.ts`
-| Action | Description |
-|---|---|
-| `addDailyTask(title)` | Create recurring checklist task |
-| `toggleTaskCompletion(taskId, date)` | Mark checklist task done for date |
-| `archiveDailyTask(taskId)` | Soft-delete checklist task |
-
-### `goals.ts`
-| Action | Description |
-|---|---|
-| `addGoal(title, category)` | Create goal with category tag |
-| `deleteGoal(id)` | Delete goal |
-
-### `settings.ts`
-| Action | Description |
-|---|---|
-| `saveGithubPat(pat)` | Store GitHub PAT in Setting table |
-| `runGithubSync()` | Trigger contribution sync + update Setting timestamps |
-
-### `checkin.ts`
-| Action | Description |
-|---|---|
-| `checkInToday()` | Upsert `DailyCheckIn` for today's date |
-
-### `leetcode.ts`
-| Action | Description |
-|---|---|
-| `upsertLeetcodeLog(date, count, notes?)` | Upsert LC count for a date |
-| `upsertLeetcodeForm(formData)` | Form wrapper for upsertLeetcodeLog |
-
-### `categories.ts`
-| Action | Description |
-|---|---|
-| `addCategory(formData)` | Create a new custom category with name + color |
-| `deleteCategory(id, formData)` | Delete a non-system category |
-| `updateCategoryColor(id, formData)` | Change the color of any category |
-
-### `auth.ts`
-| Action | Description |
-|---|---|
-| `signOut()` | NextAuth sign-out |
+### 5.4 Notion 📋 Planned
+- See `agentic_development/google-calendar-notion-plan.md`
 
 ---
 
-## 7. Pages & Components
+## 6. Server Actions (`src/app/actions/`)
 
-### 7.1 `/dashboard` — Overview
-**Data shown:**
-- 4-card summary grid: day streak, this-week task count, 7-day LC total, hybrid score %
-- Campfire check-in button (campfire GIF animation on check-in)
-- 365-day activity heatmap (react-calendar-heatmap, DevTrack purple scale)
-- "X days checked in this month" stat
-- Plan constraints summary
-- Phase timeline (4 phases)
-- Last-30-day combined chart (LeetCode, Tasks, GitHub lines)
-- Last GitHub sync timestamp + error badge
+| File | Key Actions |
+|---|---|
+| `tasks.ts` | `addTaskForm`, `toggleTaskCompletionForm(taskId, date)`, `deleteTaskAction`, `updateTaskTagsForm` |
+| `plan.ts` | `ensureActivePlanAction`, `createPlanForm`, `setActivePlanAction`, `archivePlanAction` |
+| `weekly-goals.ts` | `addWeeklyGoalForm`, `updateWeeklyGoalProgressForm`, `setWeeklyGoalStatusAction`, `deleteWeeklyGoalAction` |
+| `journal.ts` | `upsertJournalEntryForm` (empty content → delete entry) |
+| `settings.ts` | `updateSettingsForm` (all UserSettings fields), `runGithubSync` |
+| `leetcode.ts` | `upsertLeetcodeForm` (easyCount / mediumCount / hardCount / notes) |
+| `categories.ts` | `addCategory`, `deleteCategory`, `updateCategoryColor` |
+| `checkin.ts` | `checkInToday` |
+| `auth.ts` | `signOut` |
 
-**Components:** `SummaryGrid`, `CheckInButton`, `ActivityHeatmapLoader` → `ActivityHeatmap`, `DashboardChartsLoader` → `DashboardCharts`
+All actions return `void` (compatible with `<form action>`) or a result object for interactive buttons.
 
-### 7.2 `/planner` — Weekly Board
-- Weekly task board grouped by day of week
-- Each task card: title, category badge, estimated hours, completion checkbox
-- "Generate this week's tasks" button (from templates)
-- "Add manual task" form (date, title, category, hours)
-- Plan constraints shown at top
+---
 
-**Components:** `WeeklyPlannerBoard`, `PlanTag`
+## 7. Pages & Key Components
 
-### 7.3 `/today` — Daily Checklist
-- Date navigation (prev/next day arrows)
-- Recurring daily tasks (checkboxes) from `DailyTask` + `TaskCompletion`
-- Today's plan tasks from `PlanTask`
-- LeetCode log form (count + notes, upsert for date)
+### `/today`
+- Recurring task checklist (Task `isRecurring=true`) with per-day `TaskCompletion` tracking
+- Scheduled tasks for today (Task `isRecurring=false, dueDate=today`)
+- Journal editor (`JournalForm`) with #hashtag → tag chip display
+- LeetCode log form (easy/medium/hard counts + notes)
+- Weekly goals sidebar
 
-### 7.4 `/calendar` — Activity Heatmap + Daily Note
-- 365-day activity heatmap (same component and data source as `/dashboard`)
-- Date picker → day detail: plan tasks for that date with completion toggles
-- Daily note editor (textarea, save via Server Action)
-- Extracted hashtag category pills shown after note
+### `/planner`
+- 7-column board: Tasks grouped by `dueDate` for current week
+- Add-task form with `MultiTagPicker` for M:N category selection
+- Recurring task add section
 
-**Components:** `ActivityHeatmapLoader` → `ActivityHeatmap`
+### `/goals`
+- WeeklyGoal list for current ISO week: title, targetValue/metricUnit, progress bar, status badge
+- Inline progress update form
+- Add goal form: title, targetValue, metricUnit, categoryId, description
 
-### 7.5 `/goals` — Goal List
-- Goals listed with category badge
-- Add goal form (title + category dropdown, includes "OTHER")
-- Delete goal button
-- Not yet built: target values, deadlines, progress bars
+### `/calendar`
+- 365-day `ActivityHeatmap` with tooltip showing daily breakdown
+- Date navigation (prev/next, date picker)
+- Day tasks with completion toggles
+- `JournalForm` + tag chip display
 
-### 7.6 `/settings`
-- GitHub PAT input
-- "Sync GitHub now" button with loading state
-- Last synced timestamp + error display
-- Plan constraints form
-- "Bootstrap plan from seed" button
-- Categories section: list all categories with color picker, add custom categories, delete non-system categories
+### `/dashboard`
+- Summary grid: day streak, weekly task count, 7-day LeetCode total, hybrid activity score
+- `CheckInButton` (campfire)
+- 365-day `ActivityHeatmap`
+- Weekly goals progress cards
+- 30-day combined line chart (LeetCode / tasks / GitHub)
 
-### 7.7 `/login`
-- Centered card, dark background
-- "Track the grind." tagline
-- "Continue with GitHub" button → Server Action → `signIn('github', { redirectTo: '/dashboard' })`
+### `/settings`
+- `UserSettings` form: leetcodeUsername, githubUsername, githubToken, timezone
+- GitHub sync button (`SyncGithubButton`)
+- Categories: list with color picker, add custom, delete non-system
+- Plan bootstrap ("Ensure active plan")
+
+### Key components
+| Component | Location |
+|---|---|
+| `WeeklyPlannerBoard` | `components/plan/WeeklyPlannerBoard.tsx` — client, accepts `TaskWithTags[]` |
+| `MultiTagPicker` | `components/MultiTagPicker.tsx` — toggle-chip tag selector for forms |
+| `ActivityHeatmap` | `components/ActivityHeatmap.tsx` — react-calendar-heatmap wrapper |
+| `PlanTag` | `components/plan/PlanTag.tsx` — category badge chip |
+| `JournalForm` | `components/forms/JournalForm.tsx` — textarea + submit |
+| `LeetcodeForm` | `components/forms/LeetcodeForm.tsx` — easy/medium/hard inputs |
+| `SyncGithubButton` | `components/SyncGithubButton.tsx` — async action button with loading state |
+| `CheckInButton` | `components/CheckInButton.tsx` — campfire check-in |
 
 ---
 
 ## 8. Design System
 
-### Colors (Tailwind CSS v4 custom properties)
+### Colors
 ```css
---bg: #0d0d0f          /* page background */
---surface: #141416      /* card background */
---surface2: #1a1a1e     /* input / elevated surface */
+--bg: #0d0d0f
+--surface: #141416
+--surface2: #1a1a1e
 --border: rgba(255,255,255,0.07)
 --text: #e8e6e0
 --muted: #6b6966
 --muted2: #9b9893
---purple: #a78bfa       /* primary accent */
---teal: #2dd4bf         /* success / GitHub */
---amber: #fbbf24        /* warning */
---coral: #f87171        /* danger */
---green: #4ade80        /* LC easy */
---blue: #60a5fa         /* info */
-```
-
-### Heatmap color scale
-```css
---heatmap-0: #1a1a1e   /* no activity */
---heatmap-1: #3b2f6e   /* 1-2 */
---heatmap-2: #6d4fc2   /* 3-5 */
---heatmap-3: #a78bfa   /* 6-9 */
---heatmap-4: #c4b5fd   /* 10+ */
+--purple: #a78bfa     /* primary accent */
+--teal: #2dd4bf       /* success / GitHub */
+--amber: #fbbf24      /* warning */
+--coral: #f87171      /* danger */
+--green: #4ade80      /* LC easy */
+--blue: #60a5fa       /* info */
 ```
 
 ### Typography
-- Display / headings: `Syne` (Google Fonts) — weights 700, 800
+- Display / headings: `Syne` — weights 700, 800
 - Mono / labels / badges: `DM Mono` — weights 400, 500
-- Body: `Syne` with `ui-sans-serif` fallback
 
-### Component conventions
+### Conventions
 - Cards: `bg-surface border border-border rounded-xl p-4`
-- Category badges: `PlanTag` component — font-mono uppercase tracking-widest
-- Buttons: `Button` component (variant: default / outline / ghost)
-- Inputs: global CSS rule on `input[type="text"]` etc. → `bg-surface2 border border-border2 rounded-lg px-3 py-2 text-text`
-- Dark theme only (no toggle for MVP)
+- Category badges: `PlanTag` — font-mono uppercase tracking-widest, color from `Category.color`
+- Inputs: global CSS → `bg-surface2 border border-border2 rounded-lg px-3 py-2 text-text`
+- Category color applied inline via `style` prop (not Tailwind class — colors are user-defined hex values)
 
 ---
 
-## 9. State Management
+## 9. Not Yet Built
 
-- **Server state:** Page data via direct Prisma queries in `async` server components
-- **Client async state:** TanStack Query v5 — used by `DashboardChartsLoader` for chart data
-- **UI state:** React `useState` — forms, toggles, date navigation, modal open/close
-- **Form mutations:** Native `<form action={serverAction}>` for most mutations
-- **No Redux, no Zustand, no Context for data**
-
----
-
-## 10. Key Technical Decisions
-
-### Server Actions over REST routes
-All mutations use Server Actions. Avoids auth boilerplate on every route, leverages `revalidatePath()` for cache invalidation, keeps mutation logic co-located with the UI.
-
-### String dates over DateTime
-All calendar-date fields are `String "YYYY-MM-DD"`. Avoids timezone issues where UTC DateTime shifts dates for non-UTC users. String range queries (`gte: "2026-04-01"`) work reliably across all Postgres environments.
-
-### Neon Postgres for production
-Neon is the production Postgres host (plain `DATABASE_URL`, no SDK). Deployed and live as of 2026-04-30. Migrations run locally via `prisma migrate deploy` before each deploy; migration SQL seeds system categories. The Supabase JS SDK is installed as legacy prep code but is not in the active data path.
-
-### Single-tenant data model
-Goal, DailyTask, LeetcodeLog, GithubDailyStat, Setting, DailyCheckIn have no `userId`. Sufficient for a personal tool. Documented explicitly so the tradeoff is clear if users are ever added.
-
-### Plan-centric aggregate
-Data organized around a `Plan` aggregate root. Templates define recurring weekly structure; `PlanTask` instances are generated on demand from templates for a date range. This enables "what should I do this week?" queries without manual task creation.
-
-### Force-dynamic rendering
-All data pages use `export const dynamic = 'force-dynamic'`. Intentional for a daily-use app where stale data is harmful.
-
-### Auth config split for edge
-`auth.config.ts` is edge-safe (no Prisma). `auth.ts` extends it with full Node.js callbacks. Middleware can run on the Vercel edge runtime without pulling in Node.js-only deps.
-
----
-
-## 11. File Structure
-
-```
-tracker/
-├── src/
-│   ├── app/
-│   │   ├── (app)/
-│   │   │   ├── layout.tsx              ← AppShell (nav + auth guard)
-│   │   │   ├── dashboard/page.tsx
-│   │   │   ├── planner/page.tsx
-│   │   │   ├── today/page.tsx
-│   │   │   ├── calendar/page.tsx
-│   │   │   ├── goals/page.tsx
-│   │   │   └── settings/page.tsx
-│   │   ├── login/page.tsx
-│   │   ├── actions/
-│   │   │   ├── plan.ts
-│   │   │   ├── tasks.ts
-│   │   │   ├── goals.ts
-│   │   │   ├── settings.ts
-│   │   │   ├── checkin.ts
-│   │   │   ├── leetcode.ts
-│   │   │   ├── categories.ts
-│   │   │   └── auth.ts
-│   │   ├── api/
-│   │   │   └── auth/[...nextauth]/route.ts
-│   │   ├── layout.tsx                  ← fonts (Syne, DM Mono), metadata, QueryProvider
-│   │   ├── page.tsx                    ← redirect to /dashboard
-│   │   └── globals.css
-│   ├── components/
-│   │   ├── ui/
-│   │   │   └── button.tsx              ← base Button component
-│   │   ├── plan/
-│   │   │   ├── PlanTag.tsx             ← category badge
-│   │   │   └── WeeklyPlannerBoard.tsx
-│   │   ├── providers/
-│   │   │   └── app-providers.tsx       ← TanStack QueryClientProvider
-│   │   ├── ActivityHeatmap.tsx         ← full activity heatmap (/dashboard + /calendar)
-│   │   ├── ActivityHeatmapLoader.tsx   ← dynamic import wrapper (ssr: false)
-│   │   ├── AppShell.tsx                ← nav sidebar + layout shell
-│   │   ├── CheckInButton.tsx           ← campfire check-in button + modal
-│   │   ├── DashboardCharts.tsx
-│   │   ├── DashboardChartsLoader.tsx
-│   │   ├── SummaryGrid.tsx
-│   │   └── SyncGithubButton.tsx
-│   ├── lib/
-│   │   ├── db.ts                       ← Prisma singleton (includes manual model type list)
-│   │   ├── github.ts                   ← GitHub GraphQL sync (incremental)
-│   │   ├── stats.ts                    ← aggregation queries (streak, heatmap, charts)
-│   │   ├── settings.ts                 ← key-value Setting helpers
-│   │   ├── categories.ts               ← getAllCategories(), colorClassForCategory()
-│   │   ├── dates.ts                    ← ISO date utilities
-│   │   ├── tags.ts                     ← category name → Tailwind class (fallback for known names)
-│   │   ├── utils.ts                    ← cn()
-│   │   ├── chart.ts                    ← chart tick formatters
-│   │   ├── types.ts                    ← DayAggregate, MetricType
-│   │   ├── plan/
-│   │   │   ├── service.ts              ← seeding, task generation, plan heatmap
-│   │   │   ├── seed-data.ts            ← FOUR_MONTH_SEED constant
-│   │   │   └── note-tags.ts            ← #hashtag → category extractor
-│   │   ├── auth/
-│   │   │   ├── upsert-github-user.ts
-│   │   │   └── sync-user-supabase.ts   ← optional Supabase mirror (swallows errors)
-│   │   └── supabase/                   ← not active in data path; deploy prep only
-│   │       ├── client.ts
-│   │       ├── server.ts
-│   │       ├── admin.ts
-│   │       └── middleware.ts
-│   ├── auth.ts                         ← NextAuth config (Node.js, Prisma callbacks)
-│   ├── auth.config.ts                  ← NextAuth provider config (edge-safe)
-│   └── middleware.ts                   ← route protection (edge runtime)
-├── prisma/
-│   ├── schema.prisma
-│   └── migrations/
-├── agentic_development/
-│   ├── SPEC.md                         ← this file
-│   ├── architecture.md
-│   └── todo.md
-├── docker-compose.yml
-└── .env.local.example
-```
-
----
-
-## 12. Environment Variables
-
-```bash
-# Required at build time and runtime
-DATABASE_URL=postgresql://devtrack:devtrack@localhost:5432/devtrack?schema=public
-
-AUTH_SECRET=                    # openssl rand -base64 32
-AUTH_GITHUB_ID=
-AUTH_GITHUB_SECRET=
-
-# Optional — Supabase user mirror only (not in Prisma data path)
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-```
-
----
-
-## 13. MVP Scope
-
-### Built ✅
-- GitHub OAuth login (NextAuth v5)
-- Dashboard: streak, summary grid, campfire check-in button, 365-day activity heatmap, combined chart
-- Planner: weekly board, template-driven task generation
-- Today: daily checklist, plan tasks, LeetCode log
-- Calendar: 365-day activity heatmap (same component as /dashboard), day detail panel, daily note editor with hashtag categories
-- Goals: list with category tags, add/delete
-- Settings: GitHub PAT, sync trigger, plan constraints, plan bootstrap
-- GitHub activity sync (GraphQL contribution calendar)
-- Plan model: 4 phases, weekly templates, task instances, milestones
-- DailyCheckIn model + campfire check-in animation
-- Dynamic categories — `Category` table, user-managed from Settings, color picker per category
-- Incremental GitHub sync — only fetches new days after first full sync
-- Unified activity heatmap on both `/dashboard` and `/calendar` (react-calendar-heatmap)
-- Mobile responsive
-
-### Not Yet Built ❌
-- LeetCode API scrape (manual-only currently)
-- `/stats` dedicated page (charts on `/dashboard`)
-- Goal target values, deadlines, progress bars, metric tracking
-- Drag-and-drop task reorder (`@dnd-kit` installed, not wired)
-- Supabase RLS (using Prisma server-side; RLS is deploy-time concern)
-- Loading skeletons and error boundaries
-
-### Out of scope (post-MVP)
-- Multiple users / sharing
-- Dark/light mode toggle (dark only)
-- Export to CSV / PDF
-- AI summaries
-- Markdown in notes
-- Calendar integration
-
----
-
-## 14. Remaining Build Order
-
-1. ~~**Remote database**~~ ✅ Done — Neon Postgres live on Vercel (2026-04-30)
-2. **Goal metrics** — Add `targetValue`, `currentValue`, `deadline` to `Goal`; wire up progress bars on `/goals`
-3. **Stats page** — Move/expand charts to `/stats`; add LeetCode difficulty breakdown, GitHub weekly bars
-4. **LeetCode API** — Attempt unofficial GraphQL scrape on `/api/sync/leetcode`; fall back to manual
-5. **DnD task reorder** — Wire `@dnd-kit` to `WeeklyPlannerBoard` and `/today` task list
-6. **Loading skeletons, empty states, error boundaries**
+| Feature | Notes |
+|---|---|
+| Google Calendar sync | Plan in `google-calendar-notion-plan.md` |
+| Notion sync | Plan in `google-calendar-notion-plan.md` |
+| LeetCode API scrape | Manual entry is current default |
+| WeeklyReport UI | Table exists, no generation logic |
+| Planner week navigation | Current week only; no prev/next |
+| DnD task reorder | `@dnd-kit` installed, not wired |
+| Loading skeletons / error boundaries | Not implemented |
+| Gender-inclusive app name option | Settings option to rename "Big Boy Plan" |
+| Error toast styling distinct from success | Toasts exist but styling not differentiated |

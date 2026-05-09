@@ -74,3 +74,37 @@ export async function upsertJournalEntry(
 export async function deleteJournalEntry(userId: string, date: string): Promise<void> {
   await prisma.journalEntry.deleteMany({ where: { userId, date } });
 }
+
+export type PaginatedJournalEntries = {
+  entries: JournalEntryWithTags[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function listJournalEntriesPaginated(
+  userId: string,
+  page: number = 1,
+  pageSize: number = 5,
+): Promise<PaginatedJournalEntries> {
+  const skip = (page - 1) * pageSize;
+  const [entries, total] = await Promise.all([
+    prisma.journalEntry.findMany({
+      where: { userId },
+      include: { tags: { include: { category: true } } },
+      orderBy: { date: "desc" },
+      skip,
+      take: pageSize,
+    }),
+    prisma.journalEntry.count({ where: { userId } }),
+  ]);
+  return { entries, total, page, pageSize };
+}
+
+export async function listAllJournalEntries(userId: string): Promise<JournalEntryWithTags[]> {
+  return prisma.journalEntry.findMany({
+    where: { userId },
+    include: { tags: { include: { category: true } } },
+    orderBy: { date: "desc" },
+  });
+}

@@ -1,30 +1,31 @@
 # DevTrack Feature Todo
 
+## Pending
 
-- [ ] Make a small gender options for default name Big Boy Plan , a option in setting to make the title to Big Girl Plan or Big Person Plan for they them
-- [ ] Make on hover tooltip in gridview heatmap for each day what was done , Tasks, Leetcode, GithubActivity , Checkin
-- [x] Add success notifications/toasts for:
-  - task creation
-  - log save
-  - daily note save
-  - other actions that save smth on db level
-- [ ] Keep error messaging distinct from success messaging.
+- [ ] Gender-inclusive app name: option in Settings to switch "Big Boy Plan" title to "Big Girl Plan" or "Big Person Plan"
+- [ ] Planner page: prev/next week navigation (currently shows current week only)
+- [ ] Google Calendar integration — see `google-calendar-notion-plan.md`
+- [ ] Notion integration — see `google-calendar-notion-plan.md`
+- [ ] Edit/Delete Tasks in Planner page
+- [ ] Add List of Journal Entries , this weeks entries in Calendar page with Pagination to get more older journal, 
+- [ ] Add List of LeetCode logs in Calendar page with Pagination to get more older Leetcode Logs with notes   
+- [ ] Make Both List of Journal Entries and LeetCode logs with export history button to download a .md file with all Journal Logs , or all Leetcode logs
+ 
+## Completed
 
+- [x] Heatmap tooltip: shows per-day breakdown (tasks, LeetCode, GitHub, check-in)
+- [x] Toast notifications for task creation, log save, journal save, and other DB mutations
+- [x] Full schema rewrite: unified Task model, JournalEntry, WeeklyGoal, UserSettings, M:N tags (2026-05)
+- [x] Multi-user data isolation: all tables now scoped by userId
+- [x] Weekly planner board: 7-column layout using new Task model
+- [x] MultiTagPicker component: M:N category selection in task/recurring forms
+- [x] WeeklyGoal CRUD: ISO week tracking, targetValue/actualValue, status auto-derivation
+- [x] LeetCode log split into easy/medium/hard counts
+- [x] GitHub token moved to UserSettings (was global Setting key-value)
+- [x] Production deploy: Neon Postgres + Vercel (2026-04-30)
 
+## Tech debt
 
-## Tech debt — Auth pattern review
-Currently every Server Action calls `requireAuth()` (which calls `auth()` internally) and every page calls `auth()` directly to get userId. This works but is repetitive. 
-
-Questions to explore:
-- Does Next.js middleware auth already guarantee the session exists by the time a server component renders? (Yes for pages — middleware blocks unauthenticated routes. But Server Actions are not covered by middleware, so `requireAuth()` there is necessary.)
-- Could we use a React cache()-wrapped `getAuthUser()` so `auth()` is called once per request across all server components on a page, instead of N times?
-- Longer term: if the app grows, consider an explicit session context or a tRPC-style caller pattern that attaches userId once at the request boundary. 
-
-
-## Suggested implementation order
-
-1. ~~Planner correctness fixes~~ ✓
-2. ~~Check-in data model + Today button~~ ✓ → **next**: dashboard button + campfire overlay
-3. Activity heatmap (replace MonthConsistencyGrid)
-4. Calendar month grid + day tags
-5. Toast notification system across actions
+- Auth pattern: every page calls `requireAuth()` directly. Could use React `cache()` to deduplicate `auth()` across server components on the same request. Low priority for now.
+- `WeeklyReport` table exists in schema but has no generation logic or UI.
+- `@dnd-kit` is installed but not wired to any drag-and-drop UI.
