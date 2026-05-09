@@ -1,8 +1,12 @@
 "use client";
 
+import { useState } from "react";
+import Image from "next/image";
 import { toggleTaskCompletionForm } from "@/app/actions/tasks";
 import { PlanTag } from "@/components/plan/PlanTag";
+import { TaskEditModal } from "@/components/tasks/TaskEditModal";
 import type { TaskWithTags } from "@/lib/tasks";
+import type { CategoryRow } from "@/lib/categories";
 
 const WEEKDAY_LABEL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON_FIRST = [1, 2, 3, 4, 5, 6, 0];
@@ -16,11 +20,15 @@ export function WeeklyPlannerBoard({
   weekStart,
   weekEnd,
   tasks,
+  categories,
 }: {
   weekStart: string;
   weekEnd: string;
   tasks: TaskWithTags[];
+  categories: CategoryRow[];
 }) {
+  const [editingTask, setEditingTask] = useState<TaskWithTags | null>(null);
+
   // Build weekday → ISO date map for the current week
   const weekdayToDate = new Map<number, string>();
   {
@@ -44,66 +52,111 @@ export function WeeklyPlannerBoard({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {MON_FIRST.map((weekday) => {
-        const dayTasks = byWeekday.get(weekday) ?? [];
-        const colDate = weekdayToDate.get(weekday) ?? "";
-        return (
-          <section
-            key={weekday}
-            className="rounded-xl border border-border bg-surface p-4"
-          >
-            <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted2 ">
-              {WEEKDAY_LABEL[weekday]}
-              {colDate && (
-                <span className="ml-1 normal-case text-[9px] text-muted2 ">
-                  {colDate.slice(5)}
-                </span>
-              )}
-            </h3>
-            <ul className="mt-3 flex flex-col gap-2">
-              {dayTasks.length === 0 ? (
-                <li className="text-xs text-muted2 ">No tasks</li>
-              ) : (
-                dayTasks.map((task) => (
-                  <li key={task.id} className="rounded-lg border border-border p-2">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      {task.taskTags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {task.taskTags.map((tt) => (
-                            <PlanTag key={tt.categoryId} category={tt.category.name} />
-                          ))}
-                        </div>
-                      ) : (
-                        <span />
-                      )}
-                      <form action={toggleTaskCompletionForm.bind(null, task.id, task.dueDate ?? "")}>
-                        <button
-                          type="submit"
-                          className={`h-5 w-5 rounded border-2 ${
-                            task.completed ? "border-purple bg-purple/30" : "border-border2"
-                          }`}
-                        />
-                      </form>
-                    </div>
-                    <p className="mb-1 font-mono text-[11px] text-muted2 ">{task.dueDate}</p>
-                    <p
-                      className={`text-sm ${
-                        task.completed ? "text-muted2 line-through" : "text-text"
-                      }`}
+    <>
+      {editingTask && (
+        <TaskEditModal
+          task={editingTask}
+          categories={categories}
+          onClose={() => setEditingTask(null)}
+        />
+      )}
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {MON_FIRST.map((weekday) => {
+          const dayTasks = byWeekday.get(weekday) ?? [];
+          const colDate = weekdayToDate.get(weekday) ?? "";
+          return (
+            <section
+              key={weekday}
+              className="rounded-xl border border-border bg-surface p-4"
+            >
+              <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted2 ">
+                {WEEKDAY_LABEL[weekday]}
+                {colDate && (
+                  <span className="ml-1 normal-case text-[9px] text-muted2 ">
+                    {colDate.slice(5)}
+                  </span>
+                )}
+              </h3>
+              <ul className="mt-3 flex flex-col gap-2">
+                {dayTasks.length === 0 ? (
+                  <li className="text-xs text-muted2 ">No tasks</li>
+                ) : (
+                  dayTasks.map((task) => (
+                    <li
+                      key={task.id}
+                      className="rounded-lg border border-border p-2"
                     >
-                      {task.title}
-                    </p>
-                    {task.notes && (
-                      <p className="mt-1 text-xs text-muted2 ">{task.notes}</p>
-                    )}
-                  </li>
-                ))
-              )}
-            </ul>
-          </section>
-        );
-      })}
-    </div>
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        {task.taskTags.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setEditingTask(task)}
+                              className="font-mono text-[10px] text-muted2 hover:text-purple"
+                              title="Edit task"
+                            >
+                              <Image
+                                src="/edit-svgrepo-com.svg"
+                                width={15}
+                                height={5}
+                                alt="Edit Task"
+                              />
+                            </button>
+                            {task.taskTags.map((tt) => (
+                              <PlanTag
+                                key={tt.categoryId}
+                                category={tt.category.name}
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <span />
+                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <form
+                            action={toggleTaskCompletionForm.bind(
+                              null,
+                              task.id,
+                              task.dueDate ?? "",
+                            )}
+                          >
+                            <button
+                              type="submit"
+                              className={`h-5 w-5 rounded border-2 ${
+                                task.completed
+                                  ? "border-purple bg-purple/30"
+                                  : "border-border2"
+                              }`}
+                            />
+                          </form>
+                        </div>
+                      </div>
+                      <p className="mb-1 font-mono text-[11px] text-muted2 ">
+                        {task.dueDate}
+                      </p>
+                      <p
+                        className={`text-sm ${
+                          task.completed
+                            ? "text-muted2 line-through"
+                            : "text-text"
+                        }`}
+                      >
+                        {task.title}
+                      </p>
+                      {task.notes && (
+                        <p className="mt-1 text-xs text-muted2 ">
+                          {task.notes}
+                        </p>
+                      )}
+                    </li>
+                  ))
+                )}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
+    </>
   );
 }

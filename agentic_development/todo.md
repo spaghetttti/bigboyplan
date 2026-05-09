@@ -6,13 +6,13 @@
 - [ ] Planner page: prev/next week navigation (currently shows current week only)
 - [ ] Google Calendar integration — see `google-calendar-notion-plan.md`
 - [ ] Notion integration — see `google-calendar-notion-plan.md`
-- [ ] Edit/Delete Tasks in Planner page
-- [ ] Add List of Journal Entries , this weeks entries in Calendar page with Pagination to get more older journal, 
-- [ ] Add List of LeetCode logs in Calendar page with Pagination to get more older Leetcode Logs with notes   
-- [ ] Make Both List of Journal Entries and LeetCode logs with export history button to download a .md file with all Journal Logs , or all Leetcode logs
+- [ ] Add show "Update" in stead of "Save" in buttons where a LeetcodeLog or Journal Entry was already saved, make this logic reusable in for future components
  
 ## Completed
-
+- [x] Edit/Delete Tasks in Planner page
+- [x] Add List of Journal Entries , this weeks entries in Calendar page with Pagination to get more older journal, 
+- [x] Add List of LeetCode logs in Calendar page with Pagination to get more older Leetcode Logs with notes   
+- [x] Make Both List of Journal Entries and LeetCode logs with export history button to download a .md file with all Journal Logs , or all Leetcode logs
 - [x] Heatmap tooltip: shows per-day breakdown (tasks, LeetCode, GitHub, check-in)
 - [x] Toast notifications for task creation, log save, journal save, and other DB mutations
 - [x] Full schema rewrite: unified Task model, JournalEntry, WeeklyGoal, UserSettings, M:N tags (2026-05)

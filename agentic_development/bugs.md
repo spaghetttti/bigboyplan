@@ -3,7 +3,7 @@
 ## Open
 
 - [ ] ActivityHeatmap month/weekday axis labels are too large and overlap the grid cells on some viewport sizes.
-- [ ] Error toasts use the same styling as success toasts — should be visually distinct (see todo.md).
+- [ ] Tasks that are complete are not shows in the Last 30days Graph, nor in Task check-ins (week), but properly marked as completed TRUE in the database 
 
 ## Resolved
 

@@ -44,6 +44,7 @@ export default async function PlannerPage() {
           weekStart={weekStart}
           weekEnd={weekEnd}
           tasks={weekTasks}
+          categories={categories}
         />
       </div>
 

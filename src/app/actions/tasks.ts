@@ -7,6 +7,7 @@ import {
   deleteTask,
   setTaskTags,
   toggleTaskCompletion as toggleTaskCompletionLib,
+  updateTask,
 } from "@/lib/tasks";
 import { todayISO } from "@/lib/dates";
 
@@ -59,6 +60,27 @@ export async function toggleTaskCompletionForm(taskId: string, date: string) {
 export async function deleteTaskAction(taskId: string) {
   const userId = await requireAuth();
   await deleteTask(userId, taskId);
+  revalidatePath("/today");
+  revalidatePath("/planner");
+  revalidatePath("/calendar");
+  revalidatePath("/dashboard");
+}
+
+export async function updateTaskForm(taskId: string, formData: FormData) {
+  const userId = await requireAuth();
+  const title = String(formData.get("title") ?? "").trim();
+  if (!title) return;
+  const notes = String(formData.get("notes") ?? "").trim();
+  const dueDate = String(formData.get("dueDate") ?? "").trim() || null;
+  const categoryIds = categoryIdsFromForm(formData);
+
+  await updateTask(userId, taskId, {
+    title,
+    notes: notes || null,
+    dueDate,
+    categoryIds,
+  });
+
   revalidatePath("/today");
   revalidatePath("/planner");
   revalidatePath("/calendar");

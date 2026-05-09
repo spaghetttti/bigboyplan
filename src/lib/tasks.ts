@@ -117,6 +117,42 @@ export async function deleteTask(userId: string, taskId: string): Promise<void> 
   await prisma.task.deleteMany({ where: { id: taskId, userId } });
 }
 
+export type TaskUpdateInput = {
+  title?: string;
+  notes?: string | null;
+  dueDate?: string | null;
+  categoryIds?: string[];
+};
+
+export async function updateTask(
+  userId: string,
+  taskId: string,
+  patch: TaskUpdateInput,
+): Promise<void> {
+  const owned = await prisma.task.findFirst({
+    where: { id: taskId, userId },
+    select: { id: true },
+  });
+  if (!owned) return;
+
+  const { categoryIds, ...fields } = patch;
+
+  await prisma.task.update({
+    where: { id: taskId },
+    data: fields,
+  });
+
+  if (categoryIds !== undefined) {
+    await prisma.taskTag.deleteMany({ where: { taskId } });
+    if (categoryIds.length > 0) {
+      await prisma.taskTag.createMany({
+        data: categoryIds.map((categoryId) => ({ taskId, categoryId })),
+        skipDuplicates: true,
+      });
+    }
+  }
+}
+
 export async function setTaskTags(
   userId: string,
   taskId: string,
